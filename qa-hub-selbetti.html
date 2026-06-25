@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QA Hub — Selbetti Tecnologia</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<style>
+  :root {
+    --sg: #3CB54A; --sgd: #2a8a35; --sgl: #e8f7ea;
+    --so: #F47920; --sol: #fff3eb;
+    --sp: #534AB7; --spl: #EEEDFE;
+    --bg: #ffffff; --bg2: #f7f7f5; --bg3: #f0f0ee;
+    --text: #1a1a1a; --text2: #666; --text3: #999;
+    --border: rgba(0,0,0,0.1); --border2: rgba(0,0,0,0.18);
+    --radius: 8px; --radius-lg: 12px;
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a1a; --bg2: #242424; --bg3: #2e2e2e;
+      --text: #f0f0f0; --text2: #aaa; --text3: #777;
+      --border: rgba(255,255,255,0.1); --border2: rgba(255,255,255,0.18);
+      --sgl: #1a3d20; --sol: #3d2500; --spl: #1e1a40;
+      --sgd: #4fd45f;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font); background: var(--bg3); color: var(--text); min-height: 100vh; }
+
+  /* LAYOUT */
+  .app-shell { max-width: 900px; margin: 0 auto; padding: 0 16px 48px; }
+
+  /* HEADER */
+  .app-header {
+    display: flex; align-items: center; gap: 14px;
+    padding: 20px 0 16px;
+    border-bottom: 0.5px solid var(--border);
+    margin-bottom: 24px;
+  }
+  .logo { width: 40px; height: 40px; background: var(--sg); border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .logo svg { width: 22px; height: 22px; }
+  .brand-name { font-size: 18px; font-weight: 600; }
+  .brand-sub { font-size: 13px; color: var(--text2); }
+  .brand-badge { margin-left: auto; font-size: 11px; font-weight: 500; background: var(--sgl); color: var(--sgd); padding: 3px 11px; border-radius: 20px; border: 0.5px solid var(--sg); white-space: nowrap; }
+
+  /* NAV */
+  .nav { display: flex; gap: 4px; background: var(--bg2); padding: 4px; border-radius: var(--radius); margin-bottom: 24px; border: 0.5px solid var(--border); }
+  .nav-btn { flex: 1; padding: 9px 12px; font-size: 13px; font-weight: 500; border-radius: 6px; cursor: pointer; color: var(--text2); border: none; background: none; display: flex; align-items: center; justify-content: center; gap: 7px; transition: all .15s; white-space: nowrap; font-family: var(--font); }
+  .nav-btn.active { background: var(--bg); color: var(--text); border: 0.5px solid var(--border2); box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .nav-btn:hover:not(.active) { color: var(--text); background: var(--bg3); }
+  .nav-btn i { font-size: 16px; }
+
+  /* PAGES */
+  .page { display: none; } .page.active { display: block; }
+
+  /* FORMS */
+  .form-section { margin-bottom: 16px; }
+  .field-label { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
+  .field-label label { font-size: 13px; font-weight: 500; color: var(--text2); }
+  .field-hint { font-size: 11px; color: var(--text3); }
+  textarea, input[type=text], select {
+    width: 100%; font-family: var(--font); font-size: 14px; padding: 10px 12px;
+    border: 0.5px solid var(--border2); border-radius: var(--radius);
+    background: var(--bg); color: var(--text); transition: border-color .15s; line-height: 1.5;
+  }
+  textarea { resize: vertical; }
+  textarea:focus, input:focus, select:focus { outline: none; border-color: var(--sg); box-shadow: 0 0 0 3px rgba(60,181,74,.12); }
+  .ta-sm { min-height: 80px; } .ta-md { min-height: 100px; }
+  .opt-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+  .opt-row label { display: block; font-size: 13px; font-weight: 500; color: var(--text2); margin-bottom: 5px; }
+  .chip-wrap { display: flex; flex-wrap: wrap; gap: 7px; }
+  .chip { padding: 6px 13px; border: 0.5px solid var(--border2); border-radius: 20px; font-size: 12px; cursor: pointer; user-select: none; background: var(--bg); color: var(--text2); transition: all .15s; font-family: var(--font); }
+  .chip.active { background: var(--sgl); border-color: var(--sg); color: var(--sgd); font-weight: 500; }
+  .chip:hover { border-color: var(--sg); }
+
+  /* BUTTONS */
+  .btn-primary { width: 100%; padding: 12px; background: var(--sg); color: white; border: none; border-radius: var(--radius); font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background .15s, transform .1s; margin-top: 4px; font-family: var(--font); }
+  .btn-primary:hover { background: var(--sgd); }
+  .btn-primary:active { transform: scale(.99); }
+  .btn-sm-green { padding: 7px 14px; background: var(--sg); color: white; border: none; border-radius: var(--radius); font-size: 13px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: background .15s; white-space: nowrap; font-family: var(--font); }
+  .btn-sm-green:hover { background: var(--sgd); }
+  .btn-sm-outline { padding: 7px 14px; background: none; border: 0.5px solid var(--border2); border-radius: var(--radius); font-size: 13px; cursor: pointer; color: var(--text2); font-family: var(--font); }
+  .btn-sm-outline:hover { background: var(--bg2); }
+  .btn-icon { background: none; border: none; cursor: pointer; color: var(--text2); font-size: 15px; padding: 4px 5px; border-radius: 5px; font-family: var(--font); }
+  .btn-icon:hover { color: var(--text); background: var(--bg2); }
+
+  /* CARDS */
+  .card { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 16px; }
+  .card + .card { margin-top: 12px; }
+  .card-title { font-size: 12px; font-weight: 500; color: var(--text2); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 12px; }
+
+  /* METRICS */
+  .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .metric { background: var(--bg2); border-radius: var(--radius); padding: 13px 15px; border: 0.5px solid var(--border); }
+  .metric-lbl { font-size: 12px; color: var(--text2); margin-bottom: 3px; }
+  .metric-val { font-size: 26px; font-weight: 600; line-height: 1.1; }
+  .metric-sub { font-size: 11px; color: var(--text3); margin-top: 2px; }
+  .mv-t { color: var(--text); } .mv-c { color: #c0392b; } .mv-a { color: var(--so); } .mv-r { color: var(--sgd); }
+
+  /* CHARTS ROW */
+  .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .bar-group { display: flex; flex-direction: column; gap: 8px; }
+  .bar-row { display: flex; align-items: center; gap: 8px; }
+  .bar-lbl { font-size: 12px; color: var(--text2); width: 90px; flex-shrink: 0; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-track { flex: 1; background: var(--bg3); border-radius: 3px; height: 18px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width .5s ease; }
+  .bar-cnt { font-size: 12px; color: var(--text2); width: 20px; flex-shrink: 0; text-align: right; }
+  .donut-wrap { display: flex; align-items: center; gap: 16px; }
+  .donut-leg { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+  .leg-item { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text2); }
+  .leg-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .no-data { text-align: center; padding: 1.5rem; color: var(--text3); font-size: 13px; }
+
+  /* GLOBAL FILTERS */
+  .global-filters { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; margin-bottom: 16px; }
+  .gf-label { font-size: 11px; font-weight: 500; color: var(--text2); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+  .gf-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .gf-item label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 4px; }
+  .gf-item select { font-size: 13px; padding: 7px 10px; }
+
+  /* SUB-TABS */
+  .sub-tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+  .sub-tab { padding: 8px 18px; font-size: 13px; font-weight: 500; border-radius: var(--radius); cursor: pointer; color: var(--text2); border: 0.5px solid transparent; background: none; transition: all .15s; font-family: var(--font); display: flex; align-items: center; gap: 7px; }
+  .sub-tab.active { background: var(--bg); color: var(--text); border-color: var(--border2); }
+  .sub-tab:hover:not(.active) { color: var(--text); background: var(--bg2); }
+  .sub-panel { display: none; } .sub-panel.active { display: block; }
+
+  /* LIST FILTERS */
+  .list-filters { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 8px; margin-bottom: 12px; align-items: end; }
+  .lf label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 4px; }
+  .lf select, .lf input { font-size: 13px; padding: 8px 10px; }
+
+  /* TABLE */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { font-size: 11px; font-weight: 500; color: var(--text2); text-transform: uppercase; letter-spacing: .04em; padding: 8px 10px; border-bottom: 0.5px solid var(--border); text-align: left; white-space: nowrap; }
+  td { padding: 10px 10px; border-bottom: 0.5px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--bg2); }
+  .empty-t { text-align: center; padding: 2rem; color: var(--text2); font-size: 13px; }
+
+  /* BADGES */
+  .bdg { font-size: 11px; font-weight: 500; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
+  .bdg-c { background: #fde8e8; color: #c0392b; }
+  .bdg-a { background: #faeeda; color: #7a4500; }
+  .bdg-m { background: var(--sol); color: #a35000; }
+  .bdg-b { background: var(--sgl); color: var(--sgd); }
+  .bdg-ab { background: #faeeda; color: #7a4500; }
+  .bdg-ea { background: #ddeeff; color: #1a5fa0; }
+  .bdg-re { background: var(--sgl); color: var(--sgd); }
+  .bdg-fe { background: var(--bg2); color: var(--text2); }
+
+  /* MODAL */
+  .modal-ov { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 500; align-items: center; justify-content: center; padding: 16px; }
+  .modal-ov.open { display: flex; }
+  .modal { background: var(--bg); border-radius: var(--radius-lg); border: 0.5px solid var(--border); padding: 22px 24px; width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto; }
+  .modal-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .modal-ttl { font-size: 16px; font-weight: 600; }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 13px; font-weight: 500; color: var(--text2); margin-bottom: 5px; }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .modal-ft { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; padding-top: 16px; border-top: 0.5px solid var(--border); }
+  .devops-hint { font-size: 12px; color: var(--text2); background: var(--bg2); border-radius: var(--radius); padding: 8px 12px; margin-bottom: 14px; display: flex; align-items: center; gap: 7px; border: 0.5px solid var(--border); }
+
+  /* KB */
+  .kb-top { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+  .kb-search-wrap { position: relative; }
+  .kb-search-wrap input { padding-left: 38px; }
+  .kb-search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text3); font-size: 16px; pointer-events: none; }
+  .kb-cats { display: flex; flex-wrap: wrap; gap: 7px; }
+  .kb-cat { padding: 6px 14px; border: 0.5px solid var(--border2); border-radius: 20px; font-size: 12px; cursor: pointer; background: var(--bg); color: var(--text2); transition: all .15s; font-family: var(--font); }
+  .kb-cat:hover { border-color: var(--sg); color: var(--text); }
+  .kb-cat-all.active { background: var(--bg3); color: var(--text); border-color: var(--border2); font-weight: 500; }
+  .kb-cat-tipos.active { background: var(--sgl); color: var(--sgd); border-color: var(--sg); font-weight: 500; }
+  .kb-cat-conceitos.active { background: #ddeeff; color: #1a5fa0; border-color: #378ADD; font-weight: 500; }
+  .kb-cat-praticas.active { background: var(--sol); color: #a35000; border-color: var(--so); font-weight: 500; }
+  .kb-cat-metodologias.active { background: var(--spl); color: #3c3489; border-color: var(--sp); font-weight: 500; }
+  .kb-grid { display: flex; flex-direction: column; gap: 8px; }
+  .kb-card { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+  .kb-card-hdr { display: flex; align-items: center; gap: 11px; padding: 14px 16px; cursor: pointer; transition: background .1s; }
+  .kb-card-hdr:hover { background: var(--bg2); }
+  .kb-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+  .ic-tipos { background: var(--sgl); color: var(--sgd); }
+  .ic-conceitos { background: #ddeeff; color: #1a5fa0; }
+  .ic-praticas { background: var(--sol); color: #a35000; }
+  .ic-metodologias { background: var(--spl); color: #3c3489; }
+  .kb-card-title { font-size: 14px; font-weight: 500; flex: 1; }
+  .kb-tag { font-size: 11px; padding: 2px 9px; border-radius: 20px; white-space: nowrap; }
+  .tag-tipos { background: var(--sgl); color: var(--sgd); }
+  .tag-conceitos { background: #ddeeff; color: #1a5fa0; }
+  .tag-praticas { background: var(--sol); color: #a35000; }
+  .tag-metodologias { background: var(--spl); color: #3c3489; }
+  .chevron { font-size: 14px; color: var(--text3); transition: transform .2s; }
+  .chevron.open { transform: rotate(180deg); }
+  .kb-body { display: none; padding: 0 16px 16px 59px; font-size: 13px; color: var(--text2); line-height: 1.75; }
+  .kb-body.open { display: block; }
+  .kb-body ul { padding-left: 18px; margin-top: 6px; }
+  .kb-body li { margin-bottom: 4px; }
+  .kb-body strong { color: var(--text); font-weight: 500; }
+  .kb-example { background: var(--bg2); border-radius: var(--radius); padding: 9px 13px; margin-top: 10px; font-size: 12px; border: 0.5px solid var(--border); }
+  .kb-example strong { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; display: block; margin-bottom: 3px; color: var(--text3); }
+  .kb-empty { text-align: center; padding: 2.5rem; color: var(--text2); font-size: 14px; }
+
+  /* GERADOR INFO BOX */
+  .info-steps { background: var(--bg2); border-radius: var(--radius-lg); padding: 16px; margin-top: 20px; border: 0.5px solid var(--border); }
+  .info-step { display: flex; align-items: flex-start; gap: 11px; margin-bottom: 10px; font-size: 13px; color: var(--text2); line-height: 1.5; }
+  .info-step:last-child { margin-bottom: 0; }
+  .step-num { width: 22px; height: 22px; border-radius: 50%; background: var(--sg); color: white; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+
+  .divider { height: 0.5px; background: var(--border); margin: 20px 0; }
+
+  /* EXPORT BTN */
+  .dash-actions { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+  .btn-export { padding: 7px 14px; background: none; border: 0.5px solid var(--so); border-radius: var(--radius); font-size: 13px; font-weight: 500; cursor: pointer; color: var(--so); display: flex; align-items: center; gap: 6px; transition: background .15s; font-family: var(--font); }
+  .btn-export:hover { background: var(--sol); }
+
+  /* RESPONSIVE */
+  @media (max-width: 600px) {
+    .metrics { grid-template-columns: 1fr 1fr; }
+    .charts-row { grid-template-columns: 1fr; }
+    .gf-row { grid-template-columns: 1fr 1fr; }
+    .list-filters { grid-template-columns: 1fr 1fr; }
+    .list-filters .btn-sm-green { grid-column: span 2; justify-content: center; }
+    .opt-row { grid-template-columns: 1fr; }
+    .field-row { grid-template-columns: 1fr; }
+    .nav-btn span { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- HEADER -->
+  <header class="app-header">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+      </svg>
+    </div>
+    <div>
+      <div class="brand-name">QA Hub</div>
+      <div class="brand-sub">Ferramenta interna do time de Qualidade</div>
+    </div>
+    <div class="brand-badge">Selbetti Tecnologia</div>
+  </header>
+
+  <!-- NAV -->
+  <nav class="nav">
+    <button class="nav-btn active" onclick="goPage('gerador')"><i class="ti ti-sparkles"></i> <span>Gerador de Testes</span></button>
+    <button class="nav-btn" onclick="goPage('dashboard')"><i class="ti ti-chart-bar"></i> <span>Dashboard de Bugs</span></button>
+    <button class="nav-btn" onclick="goPage('conhecimento')"><i class="ti ti-book"></i> <span>Conhecimento</span></button>
+  </nav>
+
+  <!-- ══════════════════════════════════
+       PAGE 1 — GERADOR DE TESTES
+  ══════════════════════════════════ -->
+  <div class="page active" id="page-gerador">
+    <div class="form-section">
+      <div class="field-label">
+        <label for="g-us">User Story (US)</label>
+        <span class="field-hint">Como [quem], quero [o quê], para [por quê]</span>
+      </div>
+      <textarea id="g-us" class="ta-sm" placeholder="Ex: Como usuário autenticado, quero redefinir minha senha pelo e-mail para recuperar acesso à conta caso esqueça minha senha."></textarea>
+    </div>
+    <div class="form-section">
+      <div class="field-label">
+        <label for="g-ca">Critérios de Aceite</label>
+        <span class="field-hint">Condições para a US ser aceita</span>
+      </div>
+      <textarea id="g-ca" class="ta-md" placeholder="Ex:&#10;- Link enviado em até 2 minutos&#10;- Link expira em 30 minutos&#10;- Senha mínimo 8 caracteres com letra e número&#10;- Não pode repetir as últimas 3 senhas"></textarea>
+    </div>
+    <div class="form-section">
+      <div class="field-label">
+        <label for="g-dev">Análise do Dev</label>
+        <span class="field-hint">Detalhes técnicos, regras de negócio, dependências</span>
+      </div>
+      <textarea id="g-dev" class="ta-sm" placeholder="Ex: Endpoint POST /auth/reset-password, token JWT com expiração de 1800s, validação no front e back, integração com SendGrid."></textarea>
+    </div>
+    <div class="opt-row">
+      <div>
+        <label>Tipo de sistema</label>
+        <select id="g-sys">
+          <option value="web">Web / Browser</option>
+          <option value="mobile">Mobile</option>
+          <option value="API / Backend">API / Backend</option>
+          <option value="desktop">Desktop</option>
+          <option value="integração entre sistemas">Integração</option>
+        </select>
+      </div>
+      <div>
+        <label>Quantidade de casos</label>
+        <select id="g-qty">
+          <option value="5">5 casos</option>
+          <option value="8" selected>8 casos</option>
+          <option value="12">12 casos</option>
+          <option value="15">15 casos</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-section">
+      <div class="field-label"><label>Tipos de teste a incluir</label></div>
+      <div class="chip-wrap" id="g-chips">
+        <div class="chip active" data-value="positivo">✓ Positivos</div>
+        <div class="chip active" data-value="negativo">✗ Negativos</div>
+        <div class="chip active" data-value="edge case">⚡ Edge Cases</div>
+        <div class="chip" data-value="regressão">↩ Regressão</div>
+        <div class="chip" data-value="acessibilidade">♿ Acessibilidade</div>
+        <div class="chip" data-value="performance">⏱ Performance</div>
+      </div>
+    </div>
+    <button class="btn-primary" onclick="gerarCasos()">
+      <i class="ti ti-sparkles"></i> Gerar casos de teste com IA
+    </button>
+
+    <!-- RESULTADO -->
+    <div id="g-resultado" style="display:none; margin-top:20px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div style="font-size:14px;font-weight:500;" id="g-count"></div>
+        <button class="btn-export" onclick="copiarCasos()"><i class="ti ti-copy"></i> Copiar tudo</button>
+      </div>
+      <div id="g-cards" style="display:flex;flex-direction:column;gap:10px;"></div>
+    </div>
+
+    <div class="info-steps">
+      <div class="info-step"><div class="step-num">1</div><div>Preencha a <strong>US</strong>, os <strong>Critérios de Aceite</strong> e a <strong>Análise do Dev</strong> (opcional mas recomendado).</div></div>
+      <div class="info-step"><div class="step-num">2</div><div>Escolha o tipo de sistema, quantidade de casos e os tipos de teste desejados.</div></div>
+      <div class="info-step"><div class="step-num">3</div><div>Clique em <strong>Gerar</strong>. Os casos aparecem abaixo e você pode copiar ou exportar para o Azure DevOps.</div></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════
+       PAGE 2 — DASHBOARD DE BUGS
+  ══════════════════════════════════ -->
+  <div class="page" id="page-dashboard">
+    <div class="global-filters">
+      <div class="gf-label"><i class="ti ti-filter"></i> Filtros globais — afetam todas as visualizações</div>
+      <div class="gf-row">
+        <div class="gf-item"><label>Sprint</label><select id="gf-sprint" onchange="applyFilters()"><option value="">Todas</option></select></div>
+        <div class="gf-item"><label>Severidade</label><select id="gf-sev" onchange="applyFilters()"><option value="">Todas</option><option>Crítico</option><option>Alto</option><option>Médio</option><option>Baixo</option></select></div>
+        <div class="gf-item"><label>Módulo</label><select id="gf-mod" onchange="applyFilters()"><option value="">Todos</option></select></div>
+        <div class="gf-item"><label>Ambiente</label><select id="gf-amb" onchange="applyFilters()"><option value="">Todos</option><option>Dev</option><option>Homologação</option><option>Produção</option></select></div>
+      </div>
+    </div>
+
+    <div class="sub-tabs">
+      <button class="sub-tab active" onclick="switchSub('visao')"><i class="ti ti-layout-dashboard"></i> Visão geral</button>
+      <button class="sub-tab" onclick="switchSub('lista')"><i class="ti ti-list"></i> Lista de bugs</button>
+    </div>
+
+    <!-- VISÃO GERAL -->
+    <div class="sub-panel active" id="sub-visao">
+      <div class="metrics" id="d-metrics"></div>
+      <div class="charts-row">
+        <div class="card"><div class="card-title">Por severidade</div><div class="bar-group" id="d-chart-sev"></div></div>
+        <div class="card"><div class="card-title">Por status</div>
+          <div class="donut-wrap">
+            <canvas id="d-donut" width="100" height="100"></canvas>
+            <div class="donut-leg" id="d-donut-leg"></div>
+          </div>
+        </div>
+      </div>
+      <div class="card"><div class="card-title">Por módulo</div><div class="bar-group" id="d-chart-mod"></div></div>
+    </div>
+
+    <!-- LISTA -->
+    <div class="sub-panel" id="sub-lista">
+      <div class="list-filters">
+        <div class="lf"><label>Status</label><select id="lf-status" onchange="renderTable()"><option value="">Todos</option><option>Aberto</option><option>Em andamento</option><option>Resolvido</option><option>Fechado</option></select></div>
+        <div class="lf"><label>Prioridade</label><select id="lf-pri" onchange="renderTable()"><option value="">Todas</option><option>Alta</option><option>Média</option><option>Baixa</option></select></div>
+        <div class="lf"><label>Buscar</label><input type="text" id="lf-q" placeholder="Título ou ID..." oninput="renderTable()"></div>
+        <button class="btn-sm-green" onclick="openModal()"><i class="ti ti-plus"></i> Novo bug</button>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+        <button class="btn-export" onclick="exportarCSV()"><i class="ti ti-download"></i> Exportar CSV</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ID</th><th>Título</th><th>Módulo</th><th>Sev.</th><th>Prioridade</th><th>Ambiente</th><th>Status</th><th>Sprint</th><th></th></tr></thead>
+          <tbody id="d-tbody"></tbody>
+        </table>
+      </div>
+      <div class="empty-t" id="d-empty" style="display:none">Nenhum bug encontrado com os filtros selecionados.</div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════
+       PAGE 3 — CONHECIMENTO
+  ══════════════════════════════════ -->
+  <div class="page" id="page-conhecimento">
+    <div class="kb-top">
+      <div class="kb-search-wrap">
+        <i class="ti ti-search kb-search-icon"></i>
+        <input type="text" id="kb-q" placeholder="Buscar conceito, tipo de teste, metodologia..." oninput="renderKB()">
+      </div>
+      <div class="kb-cats">
+        <div class="kb-cat kb-cat-all active" onclick="setKbCat('')">Todos</div>
+        <div class="kb-cat kb-cat-tipos" onclick="setKbCat('tipos')">Tipos de teste</div>
+        <div class="kb-cat kb-cat-conceitos" onclick="setKbCat('conceitos')">Conceitos de QA</div>
+        <div class="kb-cat kb-cat-praticas" onclick="setKbCat('praticas')">Boas práticas</div>
+        <div class="kb-cat kb-cat-metodologias" onclick="setKbCat('metodologias')">Metodologias</div>
+      </div>
+    </div>
+    <div class="kb-grid" id="kb-grid"></div>
+  </div>
+
+</div><!-- /app-shell -->
+
+<!-- MODAL BUG -->
+<div class="modal-ov" id="modal-ov">
+  <div class="modal">
+    <div class="modal-hdr">
+      <div class="modal-ttl" id="m-title">Registrar novo bug</div>
+      <button class="btn-icon" onclick="closeModal()"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="devops-hint"><i class="ti ti-info-circle"></i> Lembre-se de registrar também no Azure DevOps para rastreabilidade oficial.</div>
+    <div class="field"><label>Título *</label><input type="text" id="m-titulo" placeholder="O que quebrou, onde e quando"></div>
+    <div class="field-row">
+      <div class="field"><label>Módulo / Funcionalidade *</label><input type="text" id="m-modulo" placeholder="Ex: SmartShare / ECM"></div>
+      <div class="field"><label>Sprint</label><input type="text" id="m-sprint" placeholder="Ex: Sprint 12"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Severidade *</label><select id="m-sev"><option value="">Selecione</option><option>Crítico</option><option>Alto</option><option>Médio</option><option>Baixo</option></select></div>
+      <div class="field"><label>Prioridade *</label><select id="m-pri"><option value="">Selecione</option><option>Alta</option><option>Média</option><option>Baixa</option></select></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Ambiente *</label><select id="m-amb"><option value="">Selecione</option><option>Dev</option><option>Homologação</option><option>Produção</option></select></div>
+      <div class="field"><label>Status</label><select id="m-status"><option>Aberto</option><option>Em andamento</option><option>Resolvido</option><option>Fechado</option></select></div>
+    </div>
+    <div class="field"><label>Descrição detalhada</label><textarea id="m-desc" placeholder="Comportamento encontrado, passos para reproduzir e resultado esperado..."></textarea></div>
+    <div class="field"><label>Evidência (link ou descrição)</label><input type="text" id="m-ev" placeholder="Ex: https://... ou 'Print anexado no DevOps'"></div>
+    <div class="modal-ft">
+      <button class="btn-sm-outline" onclick="closeModal()">Cancelar</button>
+      <button class="btn-sm-green" onclick="saveBug()">Salvar bug</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══ DATA ══
+let bugs = [
+  {id:'BUG-001',titulo:'Campo consulta não exibe hora no Share4',modulo:'SmartShare / ECM',sprint:'Sprint 10',sev:'Crítico',pri:'Alta',amb:'Homologação',status:'Resolvido',desc:'Ao abrir documento com índice data/hora, a hora é perdida.',ev:'Print no DevOps'},
+  {id:'BUG-002',titulo:'parseDate falha com formato yyyy-MM-dd',modulo:'SmartShare / ECM',sprint:'Sprint 10',sev:'Alto',pri:'Alta',amb:'Dev',status:'Resolvido',desc:'Regex não aceita formato ISO de data.',ev:'Log de erro no console'},
+  {id:'BUG-003',titulo:'Valor nulo no índice gera tela branca',modulo:'SmartShare / ECM',sprint:'Sprint 11',sev:'Alto',pri:'Alta',amb:'Homologação',status:'Em andamento',desc:'Quando índice retorna null, a tela trava sem mensagem de erro.',ev:'Vídeo gravado'},
+  {id:'BUG-004',titulo:'Botão salvar não persiste data editada',modulo:'Publicação de Docs',sprint:'Sprint 11',sev:'Crítico',pri:'Alta',amb:'Homologação',status:'Aberto',desc:'Após editar a data e salvar, o valor antigo é mantido.',ev:'Print antes/depois'},
+  {id:'BUG-005',titulo:'Hora exibida sem segundos no Share Clássico',modulo:'Share Clássico',sprint:'Sprint 11',sev:'Médio',pri:'Média',amb:'Produção',status:'Aberto',desc:'Valor exibido como HH:mm ao invés de HH:mm:ss.',ev:'Captura de tela'},
+  {id:'BUG-006',titulo:'Filtro de data não retorna resultados corretos',modulo:'Busca / Filtros',sprint:'Sprint 12',sev:'Alto',pri:'Alta',amb:'Homologação',status:'Aberto',desc:'Ao filtrar por data, documentos da data correta não aparecem.',ev:'Evidência no DevOps'},
+  {id:'BUG-007',titulo:'Campo alvo não recebe valor da consulta',modulo:'Índices / Consulta',sprint:'Sprint 12',sev:'Médio',pri:'Média',amb:'Dev',status:'Em andamento',desc:'Valor da consulta não é transferido para o campo alvo.',ev:'Log de console'},
+  {id:'BUG-008',titulo:'Layout quebrado no ECM em telas pequenas',modulo:'ECM / Interface',sprint:'Sprint 12',sev:'Baixo',pri:'Baixa',amb:'Homologação',status:'Aberto',desc:'Campos de data/hora sobrepostos em tela menor que 768px.',ev:'Print mobile'},
+];
+let editIdx = null;
+let filtered = [...bugs];
+
+// ══ UTILS ══
+const sevClr = {'Crítico':'#e74c3c','Alto':'#F47920','Médio':'#f39c12','Baixo':'#3CB54A'};
+const stClr  = {'Aberto':'#F47920','Em andamento':'#3498db','Resolvido':'#3CB54A','Fechado':'#95a5a6'};
+const modClrs = ['#3CB54A','#F47920','#3498db','#f39c12','#9b59b6','#95a5a6','#534AB7','#1abc9c'];
+
+function bdgSev(v){return v==='Crítico'?'bdg-c':v==='Alto'?'bdg-a':v==='Médio'?'bdg-m':'bdg-b';}
+function bdgSt(v){return v==='Aberto'?'bdg-ab':v==='Em andamento'?'bdg-ea':v==='Resolvido'?'bdg-re':'bdg-fe';}
+
+// ══ PAGES ══
+function goPage(p) {
+  document.querySelectorAll('.page').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(x => x.classList.remove('active'));
+  document.getElementById('page-'+p).classList.add('active');
+  const idx = {gerador:0, dashboard:1, conhecimento:2}[p];
+  document.querySelectorAll('.nav-btn')[idx].classList.add('active');
+  if (p === 'dashboard') applyFilters();
+}
+
+// ══ GERADOR ══
+document.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => c.classList.toggle('active')));
+
+function gerarCasos() {
+  const us = document.getElementById('g-us').value.trim();
+  const ca = document.getElementById('g-ca').value.trim();
+  const dev = document.getElementById('g-dev').value.trim();
+  const sys = document.getElementById('g-sys').value;
+  const qty = document.getElementById('g-qty').value;
+  const tipos = [...document.querySelectorAll('.chip.active')].map(c => c.dataset.value);
+
+  if (!us) { alert('Preencha a User Story.'); return; }
+  if (!ca) { alert('Preencha os Critérios de Aceite.'); return; }
+  if (!tipos.length) { alert('Selecione ao menos um tipo de teste.'); return; }
+
+  const prompt = `Você é um especialista em QA. Gere exatamente ${qty} casos de teste bem estruturados.\n\n**USER STORY:**\n${us}\n\n**CRITÉRIOS DE ACEITE:**\n${ca}\n\n**ANÁLISE DO DEV:**\n${dev || 'Não informada.'}\n\n**TIPO DE SISTEMA:** ${sys}\n**TIPOS:** ${tipos.join(', ')}\n\nResponda APENAS com JSON válido (sem markdown), array de objetos:\n[{"tipo":"positivo|negativo|edge|regressao","titulo":"...","descricao":"...","passos":["..."],"resultado_esperado":"...","ca_coberto":"..."}]`;
+
+  const btn = document.querySelector('.btn-primary');
+  btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin .7s linear infinite"></i> Gerando...';
+
+  fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({model:'claude-sonnet-4-6', max_tokens:4000, messages:[{role:'user',content:prompt}]})
+  })
+  .then(r => r.json())
+  .then(data => {
+    const text = data.content?.[0]?.text || '';
+    const clean = text.replace(/```json|```/g,'').trim();
+    const casos = JSON.parse(clean);
+    renderCasos(casos);
+  })
+  .catch(() => {
+    alert('Não foi possível conectar à API. Verifique sua conexão e tente novamente.');
+  })
+  .finally(() => {
+    btn.disabled = false; btn.innerHTML = '<i class="ti ti-sparkles"></i> Gerar casos de teste com IA';
+  });
+}
+
+const tipoLabel = {positivo:'Positivo', negativo:'Negativo', edge:'Edge Case', regressao:'Regressão', acessibilidade:'Acessibilidade', performance:'Performance'};
+const tipoColor = {positivo:'#3CB54A', negativo:'#e74c3c', edge:'#F47920', regressao:'#534AB7', acessibilidade:'#3498db', performance:'#f39c12'};
+const tipoBg    = {positivo:'#e8f7ea', negativo:'#fde8e8', edge:'#fff3eb', regressao:'#EEEDFE', acessibilidade:'#ddeeff', performance:'#fef9e7'};
+const tipoTxt   = {positivo:'#2a8a35', negativo:'#c0392b', edge:'#a35000', regressao:'#3c3489', acessibilidade:'#1a5fa0', performance:'#7a4500'};
+let casosGerados = [];
+
+function renderCasos(casos) {
+  casosGerados = casos;
+  const res = document.getElementById('g-resultado');
+  const cards = document.getElementById('g-cards');
+  document.getElementById('g-count').textContent = `${casos.length} casos gerados`;
+  cards.innerHTML = casos.map((c, i) => {
+    const tipo = c.tipo || 'positivo';
+    const cor = tipoColor[tipo] || '#888';
+    const bg = tipoBg[tipo] || '#f5f5f5';
+    const txt = tipoTxt[tipo] || '#333';
+    const label = tipoLabel[tipo] || tipo;
+    const passos = (c.passos || []).map((p,j) => `<li>${p}</li>`).join('');
+    return `<div style="background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;border-left:3px solid ${cor}">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px">
+        <div style="font-size:14px;font-weight:500;flex:1">CT-${String(i+1).padStart(3,'0')} — ${c.titulo}</div>
+        <span style="font-size:11px;font-weight:500;padding:3px 9px;border-radius:20px;background:${bg};color:${txt};white-space:nowrap">${label}</span>
+      </div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:8px">${c.descricao}</div>
+      ${passos ? `<div style="border-top:0.5px solid var(--border);padding-top:8px;margin-bottom:8px"><div style="font-size:11px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Passos</div><ol style="padding-left:16px;font-size:13px;color:var(--text2);line-height:1.7">${passos}</ol></div>` : ''}
+      <div style="font-size:12px;background:var(--bg2);border-radius:var(--radius);padding:7px 10px;color:var(--text2)"><strong style="color:var(--text)">Resultado esperado:</strong> ${c.resultado_esperado}</div>
+      ${c.ca_coberto ? `<div style="font-size:12px;margin-top:6px;color:var(--text3)"><strong style="color:var(--text2)">CA coberto:</strong> ${c.ca_coberto}</div>` : ''}
+    </div>`;
+  }).join('');
+  res.style.display = 'block';
+  res.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function copiarCasos() {
+  if (!casosGerados.length) return;
+  const txt = casosGerados.map((c,i) =>
+    `CT-${String(i+1).padStart(3,'0')} — ${c.titulo}\nTipo: ${tipoLabel[c.tipo]||c.tipo}\nCenário: ${c.descricao}\nPassos:\n${(c.passos||[]).map((p,j)=>`  ${j+1}. ${p}`).join('\n')}\nResultado esperado: ${c.resultado_esperado}\nCA coberto: ${c.ca_coberto||'—'}`
+  ).join('\n\n---\n\n');
+  navigator.clipboard.writeText(txt).then(() => alert('Casos copiados para a área de transferência!'));
+}
+
+// ══ DASHBOARD ══
+function getFiltered() {
+  const fs = document.getElementById('gf-sprint').value;
+  const fv = document.getElementById('gf-sev').value;
+  const fm = document.getElementById('gf-mod').value;
+  const fa = document.getElementById('gf-amb').value;
+  return bugs.filter(b => (!fs||b.sprint===fs)&&(!fv||b.sev===fv)&&(!fm||b.modulo===fm)&&(!fa||b.amb===fa));
+}
+
+function applyFilters() {
+  filtered = getFiltered();
+  updateDropdowns(); renderMetrics(); renderCharts(); renderTable();
+}
+
+function updateDropdowns() {
+  const sprints = [...new Set(bugs.map(b=>b.sprint).filter(Boolean))].sort();
+  const mods    = [...new Set(bugs.map(b=>b.modulo).filter(Boolean))].sort();
+  const ss = document.getElementById('gf-sprint'), cv = ss.value;
+  ss.innerHTML = '<option value="">Todas</option>' + sprints.map(s=>`<option${s===cv?' selected':''}>${s}</option>`).join('');
+  const sm = document.getElementById('gf-mod'), mv = sm.value;
+  sm.innerHTML = '<option value="">Todos</option>' + mods.map(m=>`<option${m===mv?' selected':''}>${m}</option>`).join('');
+}
+
+function renderMetrics() {
+  const d = filtered;
+  const total=d.length, crit=d.filter(b=>b.sev==='Crítico').length;
+  const aberto=d.filter(b=>b.status==='Aberto'||b.status==='Em andamento').length;
+  const resolvido=d.filter(b=>b.status==='Resolvido'||b.status==='Fechado').length;
+  document.getElementById('d-metrics').innerHTML = `
+    <div class="metric"><div class="metric-lbl">Total</div><div class="metric-val mv-t">${total}</div><div class="metric-sub">bugs registrados</div></div>
+    <div class="metric"><div class="metric-lbl">Críticos</div><div class="metric-val mv-c">${crit}</div><div class="metric-sub">alta urgência</div></div>
+    <div class="metric"><div class="metric-lbl">Em aberto</div><div class="metric-val mv-a">${aberto}</div><div class="metric-sub">pendentes</div></div>
+    <div class="metric"><div class="metric-lbl">Resolvidos</div><div class="metric-val mv-r">${resolvido}</div><div class="metric-sub">concluídos</div></div>`;
+}
+
+function renderBar(id, data, colors) {
+  const max = Math.max(...Object.values(data), 1);
+  const entries = Object.entries(data);
+  if (!entries.length) { document.getElementById(id).innerHTML = '<div class="no-data">Sem dados.</div>'; return; }
+  document.getElementById(id).innerHTML = entries.map(([lbl,cnt],i) =>
+    `<div class="bar-row">
+      <div class="bar-lbl" title="${lbl}">${lbl}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.round(cnt/max*100)}%;background:${colors[lbl]||modClrs[i%modClrs.length]}"></div></div>
+      <div class="bar-cnt">${cnt}</div>
+    </div>`).join('');
+}
+
+function renderDonut() {
+  const counts = {};
+  filtered.forEach(b => { counts[b.status] = (counts[b.status]||0)+1; });
+  const total = filtered.length || 1;
+  const canvas = document.getElementById('d-donut');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,100,100);
+  if (!filtered.length) {
+    ctx.fillStyle = '#e0e0e0'; ctx.beginPath(); ctx.arc(50,50,44,0,2*Math.PI); ctx.fill();
+    ctx.clearRect(16,16,68,68);
+    document.getElementById('d-donut-leg').innerHTML = '<div style="font-size:12px;color:var(--text3)">Sem dados</div>';
+    return;
+  }
+  let start = -Math.PI/2;
+  Object.entries(counts).forEach(([st,cnt]) => {
+    const slice = (cnt/total)*2*Math.PI;
+    ctx.beginPath(); ctx.moveTo(50,50); ctx.arc(50,50,44,start,start+slice); ctx.closePath();
+    ctx.fillStyle = stClr[st]||'#ccc'; ctx.fill(); start += slice;
+  });
+  ctx.clearRect(20,20,60,60);
+  document.getElementById('d-donut-leg').innerHTML = Object.entries(counts).map(([st,cnt]) =>
+    `<div class="leg-item"><div class="leg-dot" style="background:${stClr[st]||'#ccc'}"></div><span>${st} (${cnt})</span></div>`).join('');
+}
+
+function renderCharts() {
+  const sevC={}, modC={};
+  filtered.forEach(b => { sevC[b.sev]=(sevC[b.sev]||0)+1; modC[b.modulo]=(modC[b.modulo]||0)+1; });
+  renderBar('d-chart-sev', sevC, sevClr);
+  renderBar('d-chart-mod', modC, {});
+  renderDonut();
+}
+
+function switchSub(s) {
+  document.querySelectorAll('.sub-tab').forEach((t,i) => t.classList.toggle('active', (i===0&&s==='visao')||(i===1&&s==='lista')));
+  document.getElementById('sub-visao').classList.toggle('active', s==='visao');
+  document.getElementById('sub-lista').classList.toggle('active', s==='lista');
+}
+
+function renderTable() {
+  const fs = document.getElementById('lf-status').value;
+  const fp = document.getElementById('lf-pri').value;
+  const fq = document.getElementById('lf-q').value.toLowerCase();
+  const rows = filtered.filter(b => (!fs||b.status===fs)&&(!fp||b.pri===fp)&&(!fq||b.titulo.toLowerCase().includes(fq)||b.id.toLowerCase().includes(fq)));
+  const tbody = document.getElementById('d-tbody');
+  const empty = document.getElementById('d-empty');
+  if (!rows.length) { tbody.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display = 'none';
+  tbody.innerHTML = rows.map(b => {
+    const ri = bugs.indexOf(b);
+    return `<tr>
+      <td style="font-size:11px;color:var(--text2);white-space:nowrap">${b.id}</td>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${b.titulo}">${b.titulo}</td>
+      <td style="font-size:12px;color:var(--text2)">${b.modulo}</td>
+      <td><span class="bdg ${bdgSev(b.sev)}">${b.sev}</span></td>
+      <td style="font-size:12px;color:var(--text2)">${b.pri}</td>
+      <td style="font-size:12px;color:var(--text2)">${b.amb}</td>
+      <td><span class="bdg ${bdgSt(b.status)}">${b.status}</span></td>
+      <td style="font-size:12px;color:var(--text2);white-space:nowrap">${b.sprint||'—'}</td>
+      <td style="white-space:nowrap">
+        <button class="btn-icon" onclick="openModal(${ri})" title="Editar"><i class="ti ti-edit"></i></button>
+        <button class="btn-icon" onclick="delBug(${ri})" title="Excluir" style="color:#c0392b"><i class="ti ti-trash"></i></button>
+      </td></tr>`;
+  }).join('');
+}
+
+function openModal(idx) {
+  editIdx = idx !== undefined ? idx : null;
+  document.getElementById('m-title').textContent = editIdx !== null ? 'Editar bug' : 'Registrar novo bug';
+  const b = editIdx !== null ? bugs[editIdx] : {};
+  ['titulo','modulo','sprint','sev','pri','amb','status','desc','ev'].forEach(f => {
+    const el = document.getElementById('m-'+f);
+    if (el) el.value = b[f] || '';
+  });
+  if (!b.status) document.getElementById('m-status').value = 'Aberto';
+  document.getElementById('modal-ov').classList.add('open');
+}
+function closeModal() { document.getElementById('modal-ov').classList.remove('open'); }
+document.getElementById('modal-ov').addEventListener('click', e => { if (e.target === document.getElementById('modal-ov')) closeModal(); });
+
+function saveBug() {
+  const titulo = document.getElementById('m-titulo').value.trim();
+  const modulo = document.getElementById('m-modulo').value.trim();
+  const sev    = document.getElementById('m-sev').value;
+  const pri    = document.getElementById('m-pri').value;
+  const amb    = document.getElementById('m-amb').value;
+  if (!titulo||!modulo||!sev||!pri||!amb) { alert('Preencha os campos obrigatórios (*).'); return; }
+  const bug = {
+    id: editIdx !== null ? bugs[editIdx].id : 'BUG-'+String(bugs.length+1).padStart(3,'0'),
+    titulo, modulo, sprint: document.getElementById('m-sprint').value.trim(),
+    sev, pri, amb, status: document.getElementById('m-status').value,
+    desc: document.getElementById('m-desc').value.trim(),
+    ev: document.getElementById('m-ev').value.trim()
+  };
+  if (editIdx !== null) bugs[editIdx] = bug; else bugs.push(bug);
+  closeModal(); updateDropdowns(); applyFilters();
+}
+
+function delBug(idx) {
+  if (!confirm('Deseja excluir este bug?')) return;
+  bugs.splice(idx, 1); updateDropdowns(); applyFilters();
+}
+
+function exportarCSV() {
+  const rows = filtered.filter(b => {
+    const fs = document.getElementById('lf-status').value;
+    const fp = document.getElementById('lf-pri').value;
+    return (!fs||b.status===fs)&&(!fp||b.pri===fp);
+  });
+  const header = 'ID,Título,Módulo,Severidade,Prioridade,Ambiente,Status,Sprint,Descrição,Evidência\n';
+  const csv = rows.map(b => `"${b.id}","${b.titulo}","${b.modulo}","${b.sev}","${b.pri}","${b.amb}","${b.status}","${b.sprint||''}","${b.desc||''}","${b.ev||''}"`).join('\n');
+  const blob = new Blob(['\uFEFF'+header+csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='bugs-qa-hub.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ══ CONHECIMENTO ══
+const kbItems = [
+  {cat:'tipos',icon:'ti-test-pipe',title:'Teste unitário',body:`Testa a menor unidade do código (função, método) de forma isolada, sem dependências externas.<ul><li><strong>Responsável:</strong> geralmente o desenvolvedor</li><li><strong>Ferramentas:</strong> JUnit, Jest, NUnit, PyTest</li><li><strong>Quando usar:</strong> a cada commit, integrado ao CI/CD</li></ul><div class="kb-example"><strong>Exemplo</strong>Testar se a função parseDate() retorna null para uma string inválida.</div>`},
+  {cat:'tipos',icon:'ti-plug-connected',title:'Teste de integração',body:`Verifica se dois ou mais módulos funcionam corretamente juntos — API + banco, front + back, serviço A + B.<ul><li><strong>Foco:</strong> contratos de interface e comunicação entre partes</li><li><strong>Ferramentas:</strong> Postman, REST Assured, Supertest</li></ul><div class="kb-example"><strong>Exemplo</strong>Verificar se o endpoint POST /auth/reset-password persiste no banco e dispara e-mail via SendGrid.</div>`},
+  {cat:'tipos',icon:'ti-world',title:'Teste end-to-end (E2E)',body:`Simula o fluxo completo do usuário do início ao fim, passando por todas as camadas do sistema.<ul><li><strong>Mais lento e custoso</strong>, mas valida a experiência real</li><li><strong>Ferramentas:</strong> Cypress, Playwright, Selenium</li><li>Use para fluxos críticos de negócio e smoke tests antes de releases</li></ul><div class="kb-example"><strong>Exemplo</strong>Abrir documento no ECM → editar índice data/hora → salvar → reabrir e validar persistência.</div>`},
+  {cat:'tipos',icon:'ti-arrows-right-left',title:'Teste de regressão',body:`Garante que uma mudança no código não quebrou funcionalidades que já funcionavam antes.<ul><li><strong>Essencial</strong> após qualquer correção de bug ou nova feature</li><li>Deve cobrir os fluxos principais do sistema</li><li>Candidato ideal para automação</li></ul><div class="kb-example"><strong>Exemplo</strong>Após corrigir o parseDate() no Share4, re-testar o Share Clássico para garantir que não foi impactado.</div>`},
+  {cat:'tipos',icon:'ti-eye',title:'Teste exploratório',body:`Teste sem roteiro fixo onde o QA usa experiência e intuição para encontrar bugs não previstos.<ul><li>Muito eficaz para edge cases e inconsistências visuais</li><li>Complementa (não substitui) os casos estruturados</li><li>Registre o que foi explorado para não repetir sem critério</li></ul>`},
+  {cat:'tipos',icon:'ti-speedboat',title:'Teste de performance',body:`Avalia o comportamento do sistema sob carga — tempo de resposta, uso de memória, throughput e limites.<ul><li><strong>Tipos:</strong> carga (load), estresse (stress), pico (spike), resistência (soak)</li><li><strong>Ferramentas:</strong> JMeter, k6, Gatling, Locust</li></ul>`},
+  {cat:'tipos',icon:'ti-wheelchair',title:'Teste de acessibilidade',body:`Verifica se o sistema pode ser usado por pessoas com deficiências visuais, motoras ou cognitivas.<ul><li><strong>Padrão:</strong> WCAG 2.1 (níveis A, AA, AAA)</li><li><strong>Ferramentas:</strong> axe, Lighthouse, NVDA (leitor de tela)</li><li>Verificar contraste, navegação por teclado, labels em campos</li></ul>`},
+  {cat:'tipos',icon:'ti-smoke',title:'Smoke test',body:`Teste rápido pós-deploy para confirmar que as funções básicas estão operando antes do teste completo.<ul><li>Não é exaustivo — é um "está de pé?"</li><li>Deve durar no máximo 10 a 15 minutos</li><li>Se falhar, o build é rejeitado imediatamente</li></ul>`},
+  {cat:'conceitos',icon:'ti-alert-triangle',title:'Severidade vs. Prioridade',body:`Dois conceitos frequentemente confundidos — sempre devem ser registrados separadamente.<ul><li><strong>Severidade:</strong> impacto técnico do bug no sistema</li><li><strong>Prioridade:</strong> urgência de negócio para correção</li></ul><div class="kb-example"><strong>Exemplo clássico</strong>Logo de cabeça para baixo: <strong>severidade baixa</strong>, <strong>prioridade alta</strong>. Bug que impede login de 1 usuário interno: <strong>severidade alta</strong>, <strong>prioridade média</strong>.</div>`},
+  {cat:'conceitos',icon:'ti-chart-pie',title:'Cobertura de testes',body:`Métrica que indica o quanto do sistema está sendo testado pelos casos escritos.<ul><li><strong>Cobertura de código:</strong> % de linhas/branches executadas pelos testes automatizados</li><li><strong>Cobertura de requisitos:</strong> % de critérios de aceite cobertos por casos de teste</li><li>100% de cobertura não significa zero bugs — significa que tudo foi testado</li></ul>`},
+  {cat:'conceitos',icon:'ti-circle-check',title:'Critério de aceite',body:`Condições que uma User Story deve satisfazer para ser considerada completa e aceita pelo cliente ou PO.<ul><li>Escrito antes do desenvolvimento (definição de pronto)</li><li>Base para todos os casos de teste do QA</li><li>Deve ser testável, específico e não ambíguo</li></ul><div class="kb-example"><strong>Boa prática</strong>Se um CA não é testável ("o sistema deve ser rápido"), questione. Peça uma métrica concreta ("resposta abaixo de 2 segundos").</div>`},
+  {cat:'conceitos',icon:'ti-bug',title:'Ciclo de vida de um bug',body:`Um bug passa por estados bem definidos da descoberta ao fechamento.<ul><li><strong>Aberto:</strong> identificado e registrado pelo QA</li><li><strong>Em andamento:</strong> dev trabalhando na correção</li><li><strong>Resolvido:</strong> dev corrigiu — aguarda reteste do QA</li><li><strong>Fechado:</strong> QA validou e confirmou a correção</li><li><strong>Reaberto:</strong> correção não funcionou ou gerou regressão</li></ul>`},
+  {cat:'conceitos',icon:'ti-checklist',title:'Definição de pronto (DoD)',body:`Conjunto de critérios que toda entrega deve satisfazer além dos critérios de aceite da US.<ul><li>Exemplos: testes unitários escritos, casos de teste executados, sem bugs críticos abertos, documentação atualizada, deploy em homologação feito</li><li>A DoD é do time, não da US — vale para todas as entregas</li></ul>`},
+  {cat:'praticas',icon:'ti-file-description',title:'Como escrever um bom caso de teste',body:`Um caso mal escrito passa falsa sensação de cobertura.<ul><li><strong>Título:</strong> diz o que está sendo testado, não como</li><li><strong>Pré-condições:</strong> tudo que precisa estar configurado antes</li><li><strong>Passos:</strong> numerados, atômicos, reproduzíveis por qualquer pessoa do time</li><li><strong>Resultado esperado:</strong> concreto e verificável — nunca "deve funcionar corretamente"</li></ul><div class="kb-example"><strong>Evite</strong>"Testar o login." <strong>Prefira</strong>"CT-001 — Login com credenciais válidas redireciona para o dashboard."</div>`},
+  {cat:'praticas',icon:'ti-camera',title:'Como registrar um bug de qualidade',body:`Um bug bem registrado resolve-se mais rápido. Um bug mal registrado volta com "não reproduzi".<ul><li><strong>Título:</strong> [O que] + [onde] + [quando]</li><li><strong>Evidência:</strong> sempre. Print, vídeo, log — sem evidência o bug não existe</li><li><strong>Passos:</strong> detalhados o suficiente para qualquer dev reproduzir sem pedir ajuda</li><li><strong>Ambiente:</strong> versão, browser, OS, dados usados no teste</li><li><strong>Resultado atual vs. esperado:</strong> os dois campos são obrigatórios</li></ul>`},
+  {cat:'praticas',icon:'ti-git-branch',title:'QA na esteira de CI/CD',body:`O QA moderno está presente em todo o ciclo, não só no final.<ul><li>Participar do refinamento para questionar critérios ambíguos</li><li>Smoke tests automatizados a cada deploy em homologação</li><li>Regressão automatizada para fluxos críticos</li><li>Gate de qualidade: build não sobe para produção sem aprovação do QA</li></ul>`},
+  {cat:'praticas',icon:'ti-message-question',title:'Quando questionar antes de testar',body:`Testar com critérios ambíguos é desperdício. Questione antes — não depois de encontrar o bug.<ul><li>CA com termos vagos: "rápido", "correto", "amigável" → peça métricas</li><li>Fluxos de erro não descritos → o que acontece quando falha?</li><li>Integrações não especificadas → comportamento na indisponibilidade?</li><li>Dados de teste não definidos → quais perfis de usuário testar?</li></ul>`},
+  {cat:'metodologias',icon:'ti-test-pipe-2',title:'TDD — Test Driven Development',body:`Metodologia onde os testes são escritos antes do código de produção.<ul><li><strong>Ciclo:</strong> Red (teste que falha) → Green (código mínimo para passar) → Refactor</li><li>Resultado: código com alta cobertura desde o início</li><li>Praticado por devs — o QA deve entender para colaborar</li></ul>`},
+  {cat:'metodologias',icon:'ti-users',title:'BDD — Behavior Driven Development',body:`Extensão do TDD focada em comportamento do usuário, usando linguagem natural.<ul><li><strong>Formato Gherkin:</strong> Given (dado que) → When (quando) → Then (então)</li><li>Facilita colaboração entre QA, Dev e negócio (PO)</li><li><strong>Ferramentas:</strong> Cucumber, SpecFlow, Behave</li></ul><div class="kb-example"><strong>Exemplo</strong>Given o usuário está no ECM / When ele abre um documento com índice data/hora / Then os campos devem estar preenchidos automaticamente.</div>`},
+  {cat:'metodologias',icon:'ti-arrow-left',title:'Shift-left testing',body:`Filosofia de trazer o QA para as fases mais iniciais do desenvolvimento.<ul><li>QA participa do refinamento de US e revisão de critérios de aceite</li><li>Bugs encontrados mais cedo custam muito menos para corrigir</li><li>Automação de testes como parte do pipeline de desenvolvimento</li></ul>`},
+  {cat:'metodologias',icon:'ti-pyramid',title:'Pirâmide de testes',body:`Modelo que define a proporção ideal de testes em um projeto.<ul><li><strong>Base (muitos):</strong> testes unitários — rápidos, baratos, isolados</li><li><strong>Meio (alguns):</strong> testes de integração — verificam comunicação entre módulos</li><li><strong>Topo (poucos):</strong> testes E2E — lentos, mas validam o fluxo completo</li></ul><div class="kb-example"><strong>Anti-pattern</strong>Pirâmide invertida (muitos E2E, poucos unitários) = lenta, frágil e cara de manter.</div>`},
+];
+
+let kbCat = '';
+function setKbCat(cat) {
+  kbCat = cat;
+  document.querySelectorAll('.kb-cat').forEach(c => {
+    c.classList.remove('active');
+    if ((cat===''&&c.classList.contains('kb-cat-all'))||(cat&&c.classList.contains('kb-cat-'+cat))) c.classList.add('active');
+  });
+  renderKB();
+}
+
+function renderKB() {
+  const q = (document.getElementById('kb-q').value||'').toLowerCase();
+  const catLabels = {tipos:'Tipos de teste', conceitos:'Conceitos de QA', praticas:'Boas práticas', metodologias:'Metodologias'};
+  const catTag    = {tipos:'tag-tipos', conceitos:'tag-conceitos', praticas:'tag-praticas', metodologias:'tag-metodologias'};
+  const icCat     = {tipos:'ic-tipos', conceitos:'ic-conceitos', praticas:'ic-praticas', metodologias:'ic-metodologias'};
+  const items = kbItems.filter(i => (!kbCat||i.cat===kbCat)&&(!q||i.title.toLowerCase().includes(q)||i.body.toLowerCase().includes(q)));
+  if (!items.length) { document.getElementById('kb-grid').innerHTML='<div class="kb-empty">Nenhum resultado encontrado.</div>'; return; }
+  document.getElementById('kb-grid').innerHTML = items.map((item, i) => `
+    <div class="kb-card">
+      <div class="kb-card-hdr" onclick="toggleKB(${i})">
+        <div class="kb-icon ${icCat[item.cat]}"><i class="ti ${item.icon}"></i></div>
+        <div class="kb-card-title">${item.title}</div>
+        <span class="kb-tag ${catTag[item.cat]}">${catLabels[item.cat]}</span>
+        <i class="ti ti-chevron-down chevron" id="kbc-${i}"></i>
+      </div>
+      <div class="kb-body" id="kbb-${i}">${item.body}</div>
+    </div>`).join('');
+}
+
+function toggleKB(i) {
+  document.getElementById('kbb-'+i).classList.toggle('open');
+  document.getElementById('kbc-'+i).classList.toggle('open');
+}
+
+// SPIN ANIMATION
+const style = document.createElement('style');
+style.textContent = '@keyframes spin { to { transform: rotate(360deg); } }';
+document.head.appendChild(style);
+
+// INIT
+updateDropdowns(); filtered=[...bugs]; renderMetrics(); renderCharts(); renderTable(); renderKB();
+</script>
+</body>
+</html>

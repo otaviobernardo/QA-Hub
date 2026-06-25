@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100;
+  }
+}
+
+/* Seta customizada para selects — afastada da lateral e consistente entre temas. */
+@layer components {
+  .app-select {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%236b7280' stroke-width='1.6'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.85rem center;
+    background-size: 1rem;
+    padding-right: 2.5rem !important;
+  }
+}
+
+/* Esconde a barra de rolagem mantendo a rolagem funcional (ex: nav no mobile). */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Corpo dos artigos da base de conhecimento (conteúdo estático/HTML controlado). */
+.kb-prose {
+  font-size: 0.875rem;
+  line-height: 1.7;
+  color: #374151;
+}
+.kb-prose ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+  margin-top: 0.5rem;
+}
+.kb-prose li {
+  margin-bottom: 0.25rem;
+}
+.kb-prose strong {
+  color: #111827;
+  font-weight: 600;
+}
+.kb-prose .kb-example {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  margin-top: 0.75rem;
+  font-size: 0.8125rem;
+}
+.kb-prose .kb-example strong {
+  display: block;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.6875rem;
+  color: #9ca3af;
+  margin-bottom: 0.25rem;
+}
+
+.dark .kb-prose {
+  color: #d1d5db;
+}
+.dark .kb-prose strong {
+  color: #f3f4f6;
+}
+.dark .kb-prose .kb-example {
+  background: #111827;
+  border-color: #374151;
+}
+.dark .kb-prose .kb-example strong {
+  color: #9ca3af;
+}
