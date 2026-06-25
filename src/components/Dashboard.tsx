@@ -154,7 +154,7 @@ function Overview({ bugs, sprints }: { bugs: Bug[]; sprints: string[] }) {
     <div className="space-y-6">
       {/* Cards de métricas */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-        <MetricCard label="Total" value={total} accent="text-gray-800" />
+        <MetricCard label="Total" value={total} accent="text-gray-800 dark:text-gray-100" />
         <MetricCard label="Abertos" value={open} accent="text-red-600" />
         <MetricCard label="Em andamento" value={inProgress} accent="text-selbetti-purple" />
         <MetricCard label="Resolvidos" value={resolved} accent="text-selbetti-green" />

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { TestCase } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useGenerator } from '../context/GeneratorContext';
 import { getUserProfile } from '../lib/db';
 import { generateTestCases, TestCaseGenError } from '../lib/ai';
 import { PROVIDERS, PROVIDER_MAP, type ProviderId } from '../lib/providers';
@@ -64,15 +65,27 @@ interface GenError {
 
 export default function TestCaseGenerator() {
   const { user, apiKeys } = useAuth();
-
-  const [userStory, setUserStory] = useState('');
-  const [criteria, setCriteria] = useState('');
-  const [devAnalysis, setDevAnalysis] = useState('');
-  const [tipos, setTipos] = useState<Set<Tipo>>(new Set(['positivo', 'negativo']));
+  const {
+    userStory,
+    setUserStory,
+    criteria,
+    setCriteria,
+    devAnalysis,
+    setDevAnalysis,
+    tipos,
+    toggleTipo,
+    provider,
+    setProvider,
+    model,
+    setModel,
+    cases,
+    setCases,
+    statuses,
+    setStatus,
+  } = useGenerator();
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<GenError | null>(null);
-  const [cases, setCases] = useState<TestCase[] | null>(null);
   const [copied, setCopied] = useState(false);
 
   // Provedores que o QA já configurou (na ordem do registro).
@@ -81,13 +94,10 @@ export default function TestCaseGenerator() {
     [apiKeys],
   );
 
-  const [provider, setProvider] = useState<ProviderId | ''>('');
-  const [model, setModel] = useState('');
-
   // Mantém provedor/modelo coerentes com o que está configurado.
   useEffect(() => {
     if (configured.length === 0) {
-      setProvider('');
+      if (provider !== '') setProvider('');
       return;
     }
     const stillValid = configured.some((p) => p.id === provider);
@@ -97,16 +107,12 @@ export default function TestCaseGenerator() {
     if (!def.models.some((m) => m.id === model)) {
       setModel(def.models[0].id);
     }
-  }, [configured, provider, model]);
+  }, [configured, provider, model, setProvider, setModel]);
 
-  const toggleTipo = (value: Tipo) => {
-    setTipos((prev) => {
-      const next = new Set(prev);
-      if (next.has(value)) next.delete(value);
-      else next.add(value);
-      return next;
-    });
-  };
+  // Resumo dos status dos casos gerados.
+  const passedCount = Object.values(statuses).filter((s) => s === 'pass').length;
+  const failedCount = Object.values(statuses).filter((s) => s === 'fail').length;
+  const pendingCount = cases ? cases.length - passedCount - failedCount : 0;
 
   const handleGenerate = async (): Promise<void> => {
     setError(null);
@@ -116,7 +122,7 @@ export default function TestCaseGenerator() {
       setError({ message: 'Preencha a User Story e os Critérios de Aceite.' });
       return;
     }
-    if (tipos.size === 0) {
+    if (tipos.length === 0) {
       setError({ message: 'Selecione ao menos um tipo de teste.' });
       return;
     }
@@ -245,7 +251,7 @@ export default function TestCaseGenerator() {
             id="devAnalysis"
             value={devAnalysis}
             onChange={(e) => setDevAnalysis(e.target.value)}
-            rows={4}
+            rows={6}
             placeholder="Ex: endpoint POST /auth/reset-password, token JWT expira em 1800s, validação no front e back, integração com SendGrid."
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-selbetti-green focus:ring-2 focus:ring-selbetti-green/30 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500"
           />
@@ -311,7 +317,7 @@ export default function TestCaseGenerator() {
           </legend>
           <div className="flex flex-wrap gap-2">
             {TIPO_OPTIONS.map((opt) => {
-              const checked = tipos.has(opt.value);
+              const checked = tipos.includes(opt.value);
               return (
                 <label
                   key={opt.value}
@@ -368,10 +374,22 @@ export default function TestCaseGenerator() {
       {cases && cases.length > 0 && (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
-              {cases.length} caso{cases.length === 1 ? '' : 's'} gerado
-              {cases.length === 1 ? '' : 's'}
-            </h2>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
+                {cases.length} caso{cases.length === 1 ? '' : 's'} gerado
+                {cases.length === 1 ? '' : 's'}
+              </h2>
+              <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+                <span className="font-medium text-selbetti-green">
+                  {passedCount} passaram
+                </span>{' '}
+                ·{' '}
+                <span className="font-medium text-red-600 dark:text-red-400">
+                  {failedCount} falharam
+                </span>{' '}
+                · {pendingCount} pendente{pendingCount === 1 ? '' : 's'}
+              </p>
+            </div>
             <div className="flex gap-2">
               <button
                 type="button"
@@ -394,7 +412,13 @@ export default function TestCaseGenerator() {
             {cases.map((tc, idx) => (
               <article
                 key={idx}
-                className="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 p-5"
+                className={`rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800 ${
+                  statuses[idx] === 'pass'
+                    ? 'border-l-4 border-l-selbetti-green'
+                    : statuses[idx] === 'fail'
+                      ? 'border-l-4 border-l-red-500'
+                      : ''
+                }`}
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <span
@@ -443,6 +467,38 @@ export default function TestCaseGenerator() {
                       {tc.ca_coberto || '—'}
                     </p>
                   </div>
+                </div>
+
+                <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3 dark:border-gray-700">
+                  <span className="mr-1 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                    Resultado do teste
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setStatus(idx, statuses[idx] === 'pass' ? null : 'pass')
+                    }
+                    className={`rounded-md border px-3 py-1 text-xs font-semibold transition-colors ${
+                      statuses[idx] === 'pass'
+                        ? 'border-selbetti-green bg-selbetti-green text-white'
+                        : 'border-gray-300 text-selbetti-green hover:bg-selbetti-green/10 dark:border-gray-600'
+                    }`}
+                  >
+                    ✓ Passou
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setStatus(idx, statuses[idx] === 'fail' ? null : 'fail')
+                    }
+                    className={`rounded-md border px-3 py-1 text-xs font-semibold transition-colors ${
+                      statuses[idx] === 'fail'
+                        ? 'border-red-500 bg-red-500 text-white'
+                        : 'border-gray-300 text-red-600 hover:bg-red-50 dark:border-gray-600 dark:text-red-400 dark:hover:bg-red-500/10'
+                    }`}
+                  >
+                    ✗ Falhou
+                  </button>
                 </div>
               </article>
             ))}

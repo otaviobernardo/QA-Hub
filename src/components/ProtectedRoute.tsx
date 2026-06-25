@@ -1,5 +1,6 @@
 import { Navigate, NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { GeneratorProvider } from '../context/GeneratorContext';
 import Header from './Header';
 
 const NAV_ITEMS = [
@@ -57,7 +58,9 @@ export default function ProtectedRoute() {
         </div>
       </nav>
       <main className="mx-auto max-w-6xl px-4 py-6">
-        <Outlet />
+        <GeneratorProvider>
+          <Outlet />
+        </GeneratorProvider>
       </main>
     </div>
   );
