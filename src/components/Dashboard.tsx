@@ -6,7 +6,7 @@ import BugTable from './BugTable';
 import BugModal, { type BugModalMode } from './BugModal';
 import SprintNotes from './SprintNotes';
 
-type Tab = 'overview' | 'list';
+type Tab = 'overview' | 'trends' | 'list';
 
 interface ModalState {
   mode: BugModalMode;
@@ -77,14 +77,19 @@ export default function Dashboard() {
         <TabButton active={tab === 'overview'} onClick={() => setTab('overview')}>
           Visão geral
         </TabButton>
+        <TabButton active={tab === 'trends'} onClick={() => setTab('trends')}>
+          Tendências
+        </TabButton>
         <TabButton active={tab === 'list'} onClick={() => setTab('list')}>
           Lista de bugs
         </TabButton>
       </div>
 
-      {tab === 'overview' ? (
-        <Overview bugs={bugs} sprints={sprints} />
-      ) : (
+      {tab === 'overview' && <Overview bugs={bugs} sprints={sprints} />}
+
+      {tab === 'trends' && <Trends bugs={bugs} />}
+
+      {tab === 'list' && (
         <div className="space-y-4">
           <div className="flex justify-end">
             <button
@@ -226,6 +231,131 @@ function DistributionCard({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/* ----------------------------- Tendências ------------------------ */
+
+const NEUTRAL_BADGE = 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300';
+
+function countBy(bugs: Bug[], key: (b: Bug) => string): Record<string, number> {
+  const acc: Record<string, number> = {};
+  for (const b of bugs) {
+    const k = key(b) || '—';
+    acc[k] = (acc[k] ?? 0) + 1;
+  }
+  return acc;
+}
+
+function toItems(counts: Record<string, number>) {
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([label, count]) => ({ label, count, badge: NEUTRAL_BADGE }));
+}
+
+function Trends({ bugs }: { bugs: Bug[] }) {
+  if (bugs.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400">
+        Sem bugs para gerar tendências.
+      </div>
+    );
+  }
+
+  const open = bugs.filter(
+    (b) => b.status === 'Aberto' || b.status === 'Em andamento',
+  );
+
+  // Aging dos bugs abertos por faixa de idade.
+  const ageBuckets: Record<string, number> = {
+    '0–3 dias': 0,
+    '4–7 dias': 0,
+    '8–14 dias': 0,
+    '15+ dias': 0,
+  };
+  const now = Date.now();
+  for (const b of open) {
+    const days = (now - b.createdAt.getTime()) / 86_400_000;
+    if (days <= 3) ageBuckets['0–3 dias']++;
+    else if (days <= 7) ageBuckets['4–7 dias']++;
+    else if (days <= 14) ageBuckets['8–14 dias']++;
+    else ageBuckets['15+ dias']++;
+  }
+
+  const sprints = [...new Set(bugs.map((b) => b.sprint).filter(Boolean))].sort();
+  const bySprint = sprints.map((s) => {
+    const inSprint = bugs.filter((b) => b.sprint === s);
+    const resolved = inSprint.filter(
+      (b) => b.status === 'Resolvido' || b.status === 'Fechado',
+    ).length;
+    return { sprint: s, total: inSprint.length, resolved, open: inSprint.length - resolved };
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <DistributionCard
+          title="Bugs por módulo"
+          items={toItems(countBy(bugs, (b) => b.module))}
+          total={bugs.length}
+        />
+        <DistributionCard
+          title="Bugs por responsável"
+          items={toItems(countBy(bugs, (b) => b.assignee))}
+          total={bugs.length}
+        />
+        <DistributionCard
+          title="Bugs abertos por idade (aging)"
+          items={Object.entries(ageBuckets).map(([label, count]) => ({
+            label,
+            count,
+            badge: NEUTRAL_BADGE,
+          }))}
+          total={open.length}
+        />
+        <SprintProgressCard data={bySprint} />
+      </div>
+    </div>
+  );
+}
+
+function SprintProgressCard({
+  data,
+}: {
+  data: { sprint: string; total: number; resolved: number; open: number }[];
+}) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+      <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">
+        Abertos vs. resolvidos por sprint
+      </h3>
+      {data.length === 0 ? (
+        <p className="mt-4 text-sm text-gray-400 dark:text-gray-500">Sem sprints.</p>
+      ) : (
+        <div className="mt-4 space-y-3">
+          {data.map((s) => {
+            const pctResolved =
+              s.total > 0 ? Math.round((s.resolved / s.total) * 100) : 0;
+            return (
+              <div key={s.sprint}>
+                <div className="mb-1 flex items-center justify-between text-sm">
+                  <span className="text-gray-600 dark:text-gray-300">{s.sprint}</span>
+                  <span className="text-gray-500 dark:text-gray-400">
+                    {s.resolved}/{s.total} resolvidos
+                  </span>
+                </div>
+                <div className="flex h-2 overflow-hidden rounded-full bg-selbetti-orange/30">
+                  <div
+                    className="h-full rounded-full bg-selbetti-green"
+                    style={{ width: `${pctResolved}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
