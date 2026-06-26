@@ -313,3 +313,32 @@ do qa-hub-selbetti.html.
 - A chave Anthropic de cada usuário fica em `Firestore > users > {uid} > apiKey`
 - Os bugs ficam na coleção `bugs` e as notas de sprint em `sprintNotes`
 - O free tier do Firebase (Spark plan) suporta tranquilamente o volume desse time. Monitorar em Firebase Console > Usage se o time crescer muito.
+
+---
+
+## Fase 5 — Repositório de casos, conhecimento do time e novos dashboards
+
+Conjunto de melhorias pós-validação interna. Ordem por esforço/dependência.
+
+### 5.1 — Quantidade de casos no gerador (rápido)
+- Controle "Casos por tipo" no Gerador (ex.: 2 / 3 / 5).
+- Prompt instrui a IA a gerar N casos **por tipo selecionado**, cobrindo cenários distintos.
+- `max_tokens` da chamada escala com a quantidade esperada (evita resposta cortada).
+
+### 5.2 — Conhecimento do time (observações gerais)
+- Nova coleção `teamNotes` (compartilhada com todos os QAs): `title, category, content, tags, createdBy, createdByName, createdAt, updatedAt`.
+- Categorias: módulo / sistema / processo / outro.
+- UI dentro da aba **Base de conhecimento**, com seletor "Conceitos de QA" (estático) × "Conhecimento do time" (dinâmico).
+- Leitura por todos os autenticados; criar/editar/excluir pelo autor. Regras no `firestore.rules`.
+
+### 5.3 — Editar e salvar casos de teste (repositório)
+- Nova coleção `testCases`: caso (tipo, passos/charter, resultado, CA) + `status` (pendente/pass/fail) + `tempoMs` + `sprint?`, `modulo?` + autoria.
+- No Gerador: cada caso ganha **Editar** (inline/modal) e **Salvar** → grava em `testCases`.
+- Nova aba **"Casos de teste"** (rota `/casos`): tabela com filtros (sprint, módulo, tipo, status, busca), ver/editar/excluir, export CSV e "+ Novo manual".
+- Regras: leitura por autenticados; editar/excluir pelo criador (espelha `bugs`).
+
+### 5.4 — Novos dashboards
+- Sub-aba **"Tendências"** no Dashboard (já possível com os bugs): por módulo, por responsável, abertos vs. resolvidos por sprint, aging dos abertos.
+- Sub-aba **"Execução"** (depende de 5.3): pass rate por módulo/tipo, executados vs. pendentes por sprint, tempo gasto testando.
+
+**Entrega:** hub deixa de ser só gerador+registro e passa a gerenciar o ciclo gerar → salvar → executar → medir, com base de conhecimento operacional do time.

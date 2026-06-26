@@ -15,10 +15,17 @@ import {
 } from 'firebase/firestore';
 import type { ProviderId } from './providers';
 import { db } from './firebase';
-import type { Bug, SprintNote, UserProfile } from '../types';
+import type {
+  Bug,
+  SprintNote,
+  UserProfile,
+  TeamNote,
+  TeamNoteCategory,
+} from '../types';
 
 const BUGS = 'bugs';
 const SPRINT_NOTES = 'sprintNotes';
+const TEAM_NOTES = 'teamNotes';
 
 /** Converte um valor do Firestore (Timestamp | Date | null) em Date. */
 function toDate(value: unknown): Date {
@@ -224,4 +231,72 @@ export async function updateSprintNote(
 /** Remove uma observação de sprint. */
 export async function deleteSprintNote(id: string): Promise<void> {
   await deleteDoc(doc(db, SPRINT_NOTES, id));
+}
+
+/* ------------------------------------------------------------------ */
+/* Conhecimento do time (observações gerais)                          */
+/* ------------------------------------------------------------------ */
+
+export type NewTeamNote = Omit<TeamNote, 'createdAt' | 'updatedAt'>;
+export type TeamNoteUpdate = {
+  title?: string;
+  category?: TeamNoteCategory;
+  content?: string;
+};
+
+const CATEGORIES: TeamNoteCategory[] = [
+  'modulo',
+  'sistema',
+  'processo',
+  'outro',
+];
+
+/** Lista todas as notas de conhecimento do time, mais recentes primeiro. */
+export async function getTeamNotes(): Promise<TeamNote[]> {
+  const q = query(collection(db, TEAM_NOTES), orderBy('updatedAt', 'desc'));
+  const snapshot = await getDocs(q);
+
+  return snapshot.docs.map((d): TeamNote => {
+    const data = d.data();
+    const category = CATEGORIES.includes(data.category as TeamNoteCategory)
+      ? (data.category as TeamNoteCategory)
+      : 'outro';
+    return {
+      id: d.id,
+      title: typeof data.title === 'string' ? data.title : '',
+      category,
+      content: typeof data.content === 'string' ? data.content : '',
+      createdBy: typeof data.createdBy === 'string' ? data.createdBy : '',
+      createdByName:
+        typeof data.createdByName === 'string' ? data.createdByName : '',
+      createdAt: toDate(data.createdAt),
+      updatedAt: toDate(data.updatedAt),
+    };
+  });
+}
+
+/** Cria uma nota de conhecimento do time. */
+export async function createTeamNote(note: NewTeamNote): Promise<void> {
+  const { id, ...rest } = note;
+  await setDoc(doc(db, TEAM_NOTES, id), {
+    ...rest,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/** Atualiza uma nota de conhecimento do time. Só o criador (pelas regras). */
+export async function updateTeamNote(
+  id: string,
+  changes: TeamNoteUpdate,
+): Promise<void> {
+  await updateDoc(doc(db, TEAM_NOTES, id), {
+    ...changes,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/** Remove uma nota de conhecimento do time. */
+export async function deleteTeamNote(id: string): Promise<void> {
+  await deleteDoc(doc(db, TEAM_NOTES, id));
 }

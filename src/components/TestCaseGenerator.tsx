@@ -81,6 +81,8 @@ export default function TestCaseGenerator() {
     setDevAnalysis,
     tipos,
     toggleTipo,
+    casosPorTipo,
+    setCasosPorTipo,
     provider,
     setProvider,
     model,
@@ -187,6 +189,7 @@ export default function TestCaseGenerator() {
         acceptanceCriteria: criteria.trim(),
         devAnalysis: devAnalysis.trim(),
         tipos: [...tipos],
+        casosPorTipo,
       });
       setCases(result);
     } catch (err) {
@@ -339,9 +342,35 @@ export default function TestCaseGenerator() {
           </div>
         )}
 
+        <div className="flex items-end justify-between gap-3">
+          <label
+            htmlFor="casosPorTipo"
+            className="text-sm font-medium text-gray-700 dark:text-gray-200"
+          >
+            Casos por tipo
+          </label>
+          <select
+            id="casosPorTipo"
+            value={casosPorTipo}
+            onChange={(e) => setCasosPorTipo(Number(e.target.value))}
+            className="app-select rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-selbetti-green focus:ring-2 focus:ring-selbetti-green/30 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+          >
+            <option value={2}>2 por tipo</option>
+            <option value={3}>3 por tipo</option>
+            <option value={5}>5 por tipo</option>
+            <option value={8}>8 por tipo</option>
+          </select>
+        </div>
+
         <fieldset>
           <legend className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-200">
-            Tipos de teste
+            Tipos de teste{' '}
+            <span className="font-normal text-gray-400 dark:text-gray-500">
+              ({tipos.length === 0
+                ? 'nenhum'
+                : `~${casosPorTipo * tipos.length} casos no total`}
+              )
+            </span>
           </legend>
           <div className="flex flex-wrap gap-2">
             {TIPO_OPTIONS.map((opt) => {

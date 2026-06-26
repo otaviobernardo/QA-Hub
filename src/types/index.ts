@@ -22,6 +22,20 @@ export interface Bug {
 
 export type NoteVisibility = 'public' | 'private';
 
+export type TeamNoteCategory = 'modulo' | 'sistema' | 'processo' | 'outro';
+
+/** Conhecimento operacional compartilhado entre os QAs (como testar X, configurar Y). */
+export interface TeamNote {
+  id: string;
+  title: string;
+  category: TeamNoteCategory;
+  content: string;
+  createdBy: string;
+  createdByName: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface SprintNote {
   id: string;
   sprint: string;
