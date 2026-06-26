@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { SprintNote } from '../types';
+import type { SprintNote, NoteVisibility } from '../types';
 import {
   getSprintNotes,
   createSprintNote,
@@ -30,6 +30,7 @@ export default function SprintNotes({ sprints }: SprintNotesProps) {
 
   const [sprint, setSprint] = useState('');
   const [content, setContent] = useState('');
+  const [visibility, setVisibility] = useState<NoteVisibility>('public');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -37,10 +38,11 @@ export default function SprintNotes({ sprints }: SprintNotesProps) {
   const [editContent, setEditContent] = useState('');
 
   const load = async (): Promise<void> => {
+    if (!uid) return;
     setLoading(true);
     setLoadError(false);
     try {
-      setNotes(await getSprintNotes());
+      setNotes(await getSprintNotes(uid));
     } catch {
       setLoadError(true);
     } finally {
@@ -50,7 +52,8 @@ export default function SprintNotes({ sprints }: SprintNotesProps) {
 
   useEffect(() => {
     void load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid]);
 
   // Mantém o select coerente com as sprints disponíveis.
   useEffect(() => {
@@ -79,6 +82,7 @@ export default function SprintNotes({ sprints }: SprintNotesProps) {
         id: uuidv4(),
         sprint,
         content: content.trim(),
+        visibility,
         createdBy: uid,
         createdByName: displayName,
       });
@@ -133,7 +137,7 @@ export default function SprintNotes({ sprints }: SprintNotesProps) {
         </p>
       ) : (
         <form onSubmit={handleCreate} className="mt-4 space-y-3">
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <select
               value={sprint}
               onChange={(e) => setSprint(e.target.value)}
@@ -144,6 +148,15 @@ export default function SprintNotes({ sprints }: SprintNotesProps) {
                   {s}
                 </option>
               ))}
+            </select>
+            <select
+              value={visibility}
+              onChange={(e) => setVisibility(e.target.value as NoteVisibility)}
+              aria-label="Visibilidade da observação"
+              className="app-select rounded-md border border-gray-300 px-2 py-2 text-sm outline-none focus:border-selbetti-green focus:ring-2 focus:ring-selbetti-green/30 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+            >
+              <option value="public">Pública (todos os QAs)</option>
+              <option value="private">Apenas para mim</option>
             </select>
           </div>
           <textarea
@@ -188,9 +201,20 @@ export default function SprintNotes({ sprints }: SprintNotesProps) {
               className="rounded-lg border border-gray-100 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/50"
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="rounded-full bg-selbetti-purple/10 px-2 py-0.5 text-xs font-medium text-selbetti-purple">
-                  {note.sprint}
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-selbetti-purple/10 px-2 py-0.5 text-xs font-medium text-selbetti-purple">
+                    {note.sprint}
+                  </span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                      note.visibility === 'private'
+                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
+                        : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                    }`}
+                  >
+                    {note.visibility === 'private' ? '🔒 Privada' : 'Pública'}
+                  </span>
+                </div>
                 {note.createdBy === uid && editingId !== note.id && (
                   <div className="flex gap-2 text-xs">
                     <button

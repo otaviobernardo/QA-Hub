@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { TestCase } from '../types';
 import { useAuth } from '../context/AuthContext';
-import { useGenerator } from '../context/GeneratorContext';
+import { useGenerator, timerElapsed } from '../context/GeneratorContext';
 import { getUserProfile } from '../lib/db';
 import { generateTestCases, TestCaseGenError } from '../lib/ai';
 import { PROVIDERS, PROVIDER_MAP, type ProviderId } from '../lib/providers';
@@ -15,6 +15,8 @@ const TIPO_OPTIONS: { value: Tipo; label: string }[] = [
   { value: 'edge', label: 'Edge case' },
   { value: 'regressao', label: 'Regressão' },
   { value: 'integracao', label: 'Integração' },
+  { value: 'api', label: 'API' },
+  { value: 'exploratorio', label: 'Exploratório' },
   { value: 'aceitacao', label: 'Aceitação (UAT)' },
   { value: 'smoke', label: 'Smoke' },
   { value: 'seguranca', label: 'Segurança' },
@@ -41,6 +43,9 @@ const tipoBadge: Record<Tipo, string> = {
   aceitacao:
     'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300',
   smoke: 'bg-slate-100 text-slate-700 dark:bg-slate-600/30 dark:text-slate-300',
+  api: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300',
+  exploratorio:
+    'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-500/15 dark:text-fuchsia-300',
 };
 
 const tipoLabel: Record<Tipo, string> = {
@@ -56,6 +61,8 @@ const tipoLabel: Record<Tipo, string> = {
   compatibilidade: 'Compatibilidade',
   aceitacao: 'Aceitação (UAT)',
   smoke: 'Smoke',
+  api: 'API',
+  exploratorio: 'Exploratório',
 };
 
 interface GenError {
@@ -82,6 +89,10 @@ export default function TestCaseGenerator() {
     setCases,
     statuses,
     setStatus,
+    timers,
+    startTimer,
+    stopTimer,
+    resetTimer,
   } = useGenerator();
 
   const [loading, setLoading] = useState(false);
@@ -114,6 +125,22 @@ export default function TestCaseGenerator() {
   const failedCount = Object.values(statuses).filter((s) => s === 'fail').length;
   const pendingCount = cases ? cases.length - passedCount - failedCount : 0;
 
+  // Atualiza o tempo exibido enquanto algum cronômetro estiver em andamento.
+  const [now, setNow] = useState(() => Date.now());
+  const anyRunning = useMemo(
+    () => Object.values(timers).some((t) => t.startedAt !== null),
+    [timers],
+  );
+  useEffect(() => {
+    if (!anyRunning) return;
+    const id = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(id);
+  }, [anyRunning]);
+
+  const totalMs = cases
+    ? cases.reduce((sum, _tc, i) => sum + timerElapsed(timers[i], now), 0)
+    : 0;
+
   const handleGenerate = async (): Promise<void> => {
     setError(null);
 
@@ -136,7 +163,8 @@ export default function TestCaseGenerator() {
     }
 
     setLoading(true);
-    setCases(null);
+    // Mantém os casos atuais visíveis durante a geração; só substitui no sucesso,
+    // assim uma falha (rede/limite/JSON) não apaga os últimos casos gerados.
     try {
       // Busca a chave do provedor escolhido no Firestore antes de cada chamada.
       const profile = await getUserProfile(user.uid);
@@ -388,6 +416,9 @@ export default function TestCaseGenerator() {
                   {failedCount} falharam
                 </span>{' '}
                 · {pendingCount} pendente{pendingCount === 1 ? '' : 's'}
+                <span className="ml-2 text-gray-400 dark:text-gray-500">
+                  · ⏱ {formatTime(totalMs)} no total
+                </span>
               </p>
             </div>
             <div className="flex gap-2">
@@ -437,6 +468,31 @@ export default function TestCaseGenerator() {
                   </p>
                 )}
 
+                {tc.tipo === 'exploratorio' &&
+                  (tc.explore || tc.com || tc.para_validar || tc.e) && (
+                  <dl className="mt-3 space-y-2 rounded-md border border-fuchsia-200 bg-fuchsia-50 p-3 dark:border-fuchsia-500/20 dark:bg-fuchsia-500/10">
+                    {(
+                      [
+                        ['Explore', tc.explore],
+                        ['Com', tc.com],
+                        ['Para validar', tc.para_validar],
+                        ['E', tc.e],
+                      ] as const
+                    ).map(([label, val]) =>
+                      val ? (
+                        <div key={label}>
+                          <dt className="text-xs font-bold uppercase tracking-wide text-fuchsia-700 dark:text-fuchsia-300">
+                            {label}
+                          </dt>
+                          <dd className="text-sm text-gray-700 dark:text-gray-300">
+                            {val}
+                          </dd>
+                        </div>
+                      ) : null,
+                    )}
+                  </dl>
+                )}
+
                 {tc.passos.length > 0 && (
                   <div className="mt-3">
                     <p className="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
@@ -469,36 +525,70 @@ export default function TestCaseGenerator() {
                   </div>
                 </div>
 
-                <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3 dark:border-gray-700">
-                  <span className="mr-1 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                    Resultado do teste
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setStatus(idx, statuses[idx] === 'pass' ? null : 'pass')
-                    }
-                    className={`rounded-md border px-3 py-1 text-xs font-semibold transition-colors ${
-                      statuses[idx] === 'pass'
-                        ? 'border-selbetti-green bg-selbetti-green text-white'
-                        : 'border-gray-300 text-selbetti-green hover:bg-selbetti-green/10 dark:border-gray-600'
-                    }`}
-                  >
-                    ✓ Passou
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setStatus(idx, statuses[idx] === 'fail' ? null : 'fail')
-                    }
-                    className={`rounded-md border px-3 py-1 text-xs font-semibold transition-colors ${
-                      statuses[idx] === 'fail'
-                        ? 'border-red-500 bg-red-500 text-white'
-                        : 'border-gray-300 text-red-600 hover:bg-red-50 dark:border-gray-600 dark:text-red-400 dark:hover:bg-red-500/10'
-                    }`}
-                  >
-                    ✗ Falhou
-                  </button>
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-3 dark:border-gray-700">
+                  {/* Cronômetro do teste */}
+                  <div className="flex items-center gap-2">
+                    <span className="min-w-[3.5rem] font-mono text-sm tabular-nums text-gray-700 dark:text-gray-200">
+                      {formatTime(timerElapsed(timers[idx], now))}
+                    </span>
+                    {timers[idx]?.startedAt != null ? (
+                      <button
+                        type="button"
+                        onClick={() => stopTimer(idx)}
+                        className="rounded-md border border-selbetti-orange bg-selbetti-orange/10 px-3 py-1 text-xs font-semibold text-selbetti-orange transition-colors hover:bg-selbetti-orange/20"
+                      >
+                        ⏸ Parar
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => startTimer(idx)}
+                        className="rounded-md border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                      >
+                        ▶ Iniciar
+                      </button>
+                    )}
+                    {timerElapsed(timers[idx], now) > 0 &&
+                      timers[idx]?.startedAt == null && (
+                        <button
+                          type="button"
+                          onClick={() => resetTimer(idx)}
+                          className="text-xs font-medium text-gray-400 underline transition-colors hover:text-gray-600 dark:hover:text-gray-300"
+                        >
+                          Zerar
+                        </button>
+                      )}
+                  </div>
+
+                  {/* Resultado do teste */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setStatus(idx, statuses[idx] === 'pass' ? null : 'pass')
+                      }
+                      className={`rounded-md border px-3 py-1 text-xs font-semibold transition-colors ${
+                        statuses[idx] === 'pass'
+                          ? 'border-selbetti-green bg-selbetti-green text-white'
+                          : 'border-gray-300 text-selbetti-green hover:bg-selbetti-green/10 dark:border-gray-600'
+                      }`}
+                    >
+                      ✓ Passou
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setStatus(idx, statuses[idx] === 'fail' ? null : 'fail')
+                      }
+                      className={`rounded-md border px-3 py-1 text-xs font-semibold transition-colors ${
+                        statuses[idx] === 'fail'
+                          ? 'border-red-500 bg-red-500 text-white'
+                          : 'border-gray-300 text-red-600 hover:bg-red-50 dark:border-gray-600 dark:text-red-400 dark:hover:bg-red-500/10'
+                      }`}
+                    >
+                      ✗ Falhou
+                    </button>
+                  </div>
                 </div>
               </article>
             ))}
@@ -511,14 +601,40 @@ export default function TestCaseGenerator() {
 
 /* ----------------------------- Helpers ---------------------------- */
 
+/** Formata milissegundos como mm:ss (ou h:mm:ss acima de 1h). */
+function formatTime(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
+
+/** Para exploratórios usa o charter; para os demais, os passos numerados. */
+function charterOrSteps(tc: TestCase): string {
+  if (tc.tipo === 'exploratorio') {
+    return [
+      tc.explore && `EXPLORE: ${tc.explore}`,
+      tc.com && `COM: ${tc.com}`,
+      tc.para_validar && `PARA VALIDAR: ${tc.para_validar}`,
+      tc.e && `E: ${tc.e}`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
+  return tc.passos.map((p, i) => `${i + 1}. ${p}`).join('\n');
+}
+
 function casesToText(cases: TestCase[]): string {
   return cases
     .map((tc, idx) => {
-      const passos = tc.passos.map((p, i) => `  ${i + 1}. ${p}`).join('\n');
+      const corpo = charterOrSteps(tc);
+      const corpoLabel = tc.tipo === 'exploratorio' ? 'Charter' : 'Passos';
       return [
         `Caso ${idx + 1} — [${tipoLabel[tc.tipo]}] ${tc.titulo}`,
         tc.descricao && `Descrição: ${tc.descricao}`,
-        passos && `Passos:\n${passos}`,
+        corpo && `${corpoLabel}:\n${corpo}`,
         `Resultado esperado: ${tc.resultado_esperado}`,
         `CA coberto: ${tc.ca_coberto}`,
       ]
@@ -547,7 +663,7 @@ function exportCasesCsv(cases: TestCase[]): void {
       tipoLabel[tc.tipo],
       tc.titulo,
       tc.descricao,
-      tc.passos.map((p, i) => `${i + 1}. ${p}`).join('\n'),
+      charterOrSteps(tc),
       tc.resultado_esperado,
       tc.ca_coberto,
     ]

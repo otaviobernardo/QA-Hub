@@ -16,6 +16,8 @@ const VALID_TIPOS: TestCase['tipo'][] = [
   'compatibilidade',
   'aceitacao',
   'smoke',
+  'api',
+  'exploratorio',
 ];
 
 const PARSE_MSG =
@@ -56,7 +58,7 @@ export interface GenerateParams {
 
 function buildSystemPrompt(tipos: TestCase['tipo'][]): string {
   const lista = tipos.join(', ');
-  return [
+  const lines = [
     'Você é um QA sênior especializado em derivar casos de teste a partir de',
     'User Stories e Critérios de Aceite.',
     '',
@@ -64,16 +66,32 @@ function buildSystemPrompt(tipos: TestCase['tipo'][]): string {
     '',
     'Responda APENAS com um array JSON válido. Sem markdown, sem cercas de',
     'código (```), sem texto antes ou depois. Cada item do array deve ter',
-    'exatamente estes campos:',
+    'estes campos:',
     `- "tipo": um destes valores exatos: ${lista}`,
     '- "titulo": string curta e objetiva',
     '- "descricao": string descrevendo o objetivo do teste',
     '- "passos": array de strings, cada string é um passo',
     '- "resultado_esperado": string',
     '- "ca_coberto": string referenciando o critério de aceite coberto',
-    '',
-    'Não inclua propriedades além dessas. Não use comentários no JSON.',
-  ].join('\n');
+  ];
+
+  if (tipos.includes('exploratorio')) {
+    lines.push(
+      '',
+      'Para itens com "tipo" igual a "exploratorio", NÃO use passos roteirizados.',
+      'Descreva uma sessão exploratória (charter) no formato Explore/Com/Para',
+      'validar/E, preenchendo também estes campos:',
+      '- "explore": o que será explorado (área, fluxo ou funcionalidade)',
+      '- "com": recursos, dados, perfis ou ferramentas usados na exploração',
+      '- "para_validar": o objetivo — que tipo de problema ou informação buscar',
+      '- "e": observações adicionais ou pontos de atenção',
+      'Nesses itens, "passos" deve ser um array vazio e "resultado_esperado" pode',
+      'descrever o critério de sucesso geral da sessão.',
+    );
+  }
+
+  lines.push('', 'Não use comentários no JSON.');
+  return lines.join('\n');
 }
 
 function buildUserContent(
@@ -104,6 +122,8 @@ function normalizeCase(raw: unknown): TestCase | null {
   const tipo = VALID_TIPOS.includes(o.tipo as TestCase['tipo'])
     ? (o.tipo as TestCase['tipo'])
     : 'positivo';
+  const optStr = (v: unknown): string | undefined =>
+    typeof v === 'string' && v.trim() ? v : undefined;
   return {
     tipo,
     titulo: typeof o.titulo === 'string' ? o.titulo : '',
@@ -112,6 +132,10 @@ function normalizeCase(raw: unknown): TestCase | null {
     resultado_esperado:
       typeof o.resultado_esperado === 'string' ? o.resultado_esperado : '',
     ca_coberto: typeof o.ca_coberto === 'string' ? o.ca_coberto : '',
+    explore: optStr(o.explore),
+    com: optStr(o.com),
+    para_validar: optStr(o.para_validar),
+    e: optStr(o.e),
   };
 }
 

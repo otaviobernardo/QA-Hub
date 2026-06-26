@@ -11,6 +11,18 @@ import type { ProviderId } from '../lib/providers';
 export type CaseStatus = 'pass' | 'fail';
 type Tipo = TestCase['tipo'];
 
+/** Cronômetro de um caso: tempo acumulado + instante de início (null = parado). */
+export interface TimerState {
+  elapsedMs: number;
+  startedAt: number | null;
+}
+
+/** Tempo decorrido (ms) considerando um cronômetro possivelmente em andamento. */
+export function timerElapsed(t: TimerState | undefined, now: number): number {
+  if (!t) return 0;
+  return t.elapsedMs + (t.startedAt !== null ? now - t.startedAt : 0);
+}
+
 const STORAGE_KEY = 'qa-hub-generator';
 
 interface PersistedState {
@@ -22,6 +34,7 @@ interface PersistedState {
   model: string;
   cases: TestCase[] | null;
   statuses: Record<number, CaseStatus>;
+  timers: Record<number, TimerState>;
 }
 
 const INITIAL: PersistedState = {
@@ -33,6 +46,7 @@ const INITIAL: PersistedState = {
   model: '',
   cases: null,
   statuses: {},
+  timers: {},
 };
 
 function loadState(): PersistedState {
@@ -62,11 +76,15 @@ interface GeneratorContextValue {
   model: string;
   setModel: (v: string) => void;
   cases: TestCase[] | null;
-  /** Define os casos gerados e zera os status (cada geração começa "pendente"). */
+  /** Define os casos gerados e zera status e cronômetros (cada geração recomeça). */
   setCases: (cases: TestCase[] | null) => void;
   statuses: Record<number, CaseStatus>;
   /** Marca/desmarca o status de um caso (null = volta para pendente). */
   setStatus: (index: number, status: CaseStatus | null) => void;
+  timers: Record<number, TimerState>;
+  startTimer: (index: number) => void;
+  stopTimer: (index: number) => void;
+  resetTimer: (index: number) => void;
 }
 
 const GeneratorContext = createContext<GeneratorContextValue | undefined>(
@@ -109,7 +127,7 @@ export function GeneratorProvider({ children }: { children: ReactNode }) {
     model: state.model,
     setModel: (v) => patch({ model: v }),
     cases: state.cases,
-    setCases: (cases) => patch({ cases, statuses: {} }),
+    setCases: (cases) => patch({ cases, statuses: {}, timers: {} }),
     statuses: state.statuses,
     setStatus: (index, status) =>
       setState((s) => {
@@ -117,6 +135,37 @@ export function GeneratorProvider({ children }: { children: ReactNode }) {
         if (status === null) delete next[index];
         else next[index] = status;
         return { ...s, statuses: next };
+      }),
+    timers: state.timers,
+    startTimer: (index) =>
+      setState((s) => {
+        const cur = s.timers[index] ?? { elapsedMs: 0, startedAt: null };
+        if (cur.startedAt !== null) return s; // já rodando
+        return {
+          ...s,
+          timers: { ...s.timers, [index]: { ...cur, startedAt: Date.now() } },
+        };
+      }),
+    stopTimer: (index) =>
+      setState((s) => {
+        const cur = s.timers[index];
+        if (!cur || cur.startedAt === null) return s; // já parado
+        return {
+          ...s,
+          timers: {
+            ...s.timers,
+            [index]: {
+              elapsedMs: cur.elapsedMs + (Date.now() - cur.startedAt),
+              startedAt: null,
+            },
+          },
+        };
+      }),
+    resetTimer: (index) =>
+      setState((s) => {
+        const next = { ...s.timers };
+        delete next[index];
+        return { ...s, timers: next };
       }),
   };
 

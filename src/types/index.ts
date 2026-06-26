@@ -20,10 +20,13 @@ export interface Bug {
   updatedAt: Date;
 }
 
+export type NoteVisibility = 'public' | 'private';
+
 export interface SprintNote {
   id: string;
   sprint: string;
   content: string;             // texto livre do alinhamento
+  visibility: NoteVisibility;  // 'public' = todos os QAs | 'private' = só o criador
   createdBy: string;           // uid do QA que registrou
   createdByName: string;       // nome para exibição
   createdAt: Date;
@@ -50,10 +53,17 @@ export interface TestCase {
     | 'integracao'
     | 'compatibilidade'
     | 'aceitacao'
-    | 'smoke';
+    | 'smoke'
+    | 'api'
+    | 'exploratorio';
   titulo: string;
   descricao: string;
   passos: string[];
   resultado_esperado: string;
   ca_coberto: string;
+  // Charter de teste exploratório — preenchido quando tipo === 'exploratorio'.
+  explore?: string;       // o que explorar
+  com?: string;           // recursos, dados, ferramentas
+  para_validar?: string;  // objetivo / o que descobrir
+  e?: string;             // observações adicionais
 }

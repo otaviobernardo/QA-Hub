@@ -8,6 +8,7 @@ import {
   deleteDoc,
   deleteField,
   query,
+  where,
   orderBy,
   serverTimestamp,
   Timestamp,
@@ -161,22 +162,43 @@ export async function deleteBug(id: string): Promise<void> {
 /** Dados de uma nova nota. createdAt é definido pelo servidor. */
 export type NewSprintNote = Omit<SprintNote, 'createdAt'>;
 
-/** Lista todas as observações de sprint, mais recentes primeiro. */
-export async function getSprintNotes(): Promise<SprintNote[]> {
-  const q = query(collection(db, SPRINT_NOTES), orderBy('createdAt', 'desc'));
-  const snapshot = await getDocs(q);
+function toSprintNote(d: {
+  id: string;
+  data: () => Record<string, unknown>;
+}): SprintNote {
+  const data = d.data();
+  return {
+    id: d.id,
+    sprint: typeof data.sprint === 'string' ? data.sprint : '',
+    content: typeof data.content === 'string' ? data.content : '',
+    visibility: data.visibility === 'private' ? 'private' : 'public',
+    createdBy: typeof data.createdBy === 'string' ? data.createdBy : '',
+    createdByName:
+      typeof data.createdByName === 'string' ? data.createdByName : '',
+    createdAt: toDate(data.createdAt),
+  };
+}
 
-  return snapshot.docs.map((d): SprintNote => {
-    const data = d.data();
-    return {
-      id: d.id,
-      sprint: data.sprint ?? '',
-      content: data.content ?? '',
-      createdBy: data.createdBy ?? '',
-      createdByName: data.createdByName ?? '',
-      createdAt: toDate(data.createdAt),
-    };
-  });
+/**
+ * Lista as observações de sprint visíveis para o usuário: todas as públicas
+ * mais as privadas dele mesmo. Mais recentes primeiro.
+ */
+export async function getSprintNotes(uid: string): Promise<SprintNote[]> {
+  const coll = collection(db, SPRINT_NOTES);
+  const [publicSnap, mineSnap] = await Promise.all([
+    getDocs(query(coll, where('visibility', '==', 'public'))),
+    getDocs(query(coll, where('createdBy', '==', uid))),
+  ]);
+
+  // Dedup (uma nota pública minha apareceria nas duas consultas).
+  const byId = new Map<string, SprintNote>();
+  for (const d of [...publicSnap.docs, ...mineSnap.docs]) {
+    byId.set(d.id, toSprintNote(d));
+  }
+
+  return [...byId.values()].sort(
+    (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+  );
 }
 
 /** Cria uma observação de sprint. O id (UUID) vira o id do documento. */
