@@ -54,6 +54,21 @@ export interface UserProfile {
   apiKeys?: Record<string, string>; // chaves por provedor de IA (anthropic, openai, gemini, ...)
 }
 
+export type SavedCaseStatus = 'pendente' | 'pass' | 'fail';
+
+/** Caso de teste salvo no repositório (com metadados de execução). */
+export interface SavedTestCase extends TestCase {
+  id: string;
+  sprint: string;
+  modulo: string;
+  status: SavedCaseStatus;
+  tempoMs: number;             // tempo de execução registrado (cronômetro)
+  createdBy: string;
+  createdByName: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface TestCase {
   tipo:
     | 'positivo'

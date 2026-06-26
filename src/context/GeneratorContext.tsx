@@ -82,6 +82,8 @@ interface GeneratorContextValue {
   cases: TestCase[] | null;
   /** Define os casos gerados e zera status e cronômetros (cada geração recomeça). */
   setCases: (cases: TestCase[] | null) => void;
+  /** Atualiza um caso gerado in-place (edição antes de salvar). */
+  updateCase: (index: number, updated: TestCase) => void;
   statuses: Record<number, CaseStatus>;
   /** Marca/desmarca o status de um caso (null = volta para pendente). */
   setStatus: (index: number, status: CaseStatus | null) => void;
@@ -134,6 +136,13 @@ export function GeneratorProvider({ children }: { children: ReactNode }) {
     setModel: (v) => patch({ model: v }),
     cases: state.cases,
     setCases: (cases) => patch({ cases, statuses: {}, timers: {} }),
+    updateCase: (index, updated) =>
+      setState((s) => {
+        if (!s.cases) return s;
+        const next = s.cases.slice();
+        next[index] = updated;
+        return { ...s, cases: next };
+      }),
     statuses: state.statuses,
     setStatus: (index, status) =>
       setState((s) => {

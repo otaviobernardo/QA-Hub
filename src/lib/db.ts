@@ -21,11 +21,15 @@ import type {
   UserProfile,
   TeamNote,
   TeamNoteCategory,
+  SavedTestCase,
+  SavedCaseStatus,
+  TestCase,
 } from '../types';
 
 const BUGS = 'bugs';
 const SPRINT_NOTES = 'sprintNotes';
 const TEAM_NOTES = 'teamNotes';
+const TEST_CASES = 'testCases';
 
 /** Converte um valor do Firestore (Timestamp | Date | null) em Date. */
 function toDate(value: unknown): Date {
@@ -299,4 +303,85 @@ export async function updateTeamNote(
 /** Remove uma nota de conhecimento do time. */
 export async function deleteTeamNote(id: string): Promise<void> {
   await deleteDoc(doc(db, TEAM_NOTES, id));
+}
+
+/* ------------------------------------------------------------------ */
+/* Repositório de casos de teste                                      */
+/* ------------------------------------------------------------------ */
+
+export type NewSavedCase = Omit<SavedTestCase, 'createdAt' | 'updatedAt'>;
+export type SavedCaseUpdate = Partial<
+  Omit<SavedTestCase, 'id' | 'createdBy' | 'createdAt' | 'updatedAt'>
+>;
+
+const SAVED_STATUSES: SavedCaseStatus[] = ['pendente', 'pass', 'fail'];
+
+function optStr(v: unknown): string | undefined {
+  return typeof v === 'string' && v.trim() ? v : undefined;
+}
+
+/** Lista todos os casos de teste salvos, mais recentes primeiro. */
+export async function getSavedCases(): Promise<SavedTestCase[]> {
+  const q = query(collection(db, TEST_CASES), orderBy('updatedAt', 'desc'));
+  const snapshot = await getDocs(q);
+
+  return snapshot.docs.map((d): SavedTestCase => {
+    const data = d.data();
+    const status = SAVED_STATUSES.includes(data.status as SavedCaseStatus)
+      ? (data.status as SavedCaseStatus)
+      : 'pendente';
+    return {
+      id: d.id,
+      tipo: (data.tipo ?? 'positivo') as TestCase['tipo'],
+      titulo: typeof data.titulo === 'string' ? data.titulo : '',
+      descricao: typeof data.descricao === 'string' ? data.descricao : '',
+      passos: Array.isArray(data.passos)
+        ? data.passos.map((p: unknown) => String(p))
+        : [],
+      resultado_esperado:
+        typeof data.resultado_esperado === 'string'
+          ? data.resultado_esperado
+          : '',
+      ca_coberto: typeof data.ca_coberto === 'string' ? data.ca_coberto : '',
+      explore: optStr(data.explore),
+      com: optStr(data.com),
+      para_validar: optStr(data.para_validar),
+      e: optStr(data.e),
+      sprint: typeof data.sprint === 'string' ? data.sprint : '',
+      modulo: typeof data.modulo === 'string' ? data.modulo : '',
+      status,
+      tempoMs: typeof data.tempoMs === 'number' ? data.tempoMs : 0,
+      createdBy: typeof data.createdBy === 'string' ? data.createdBy : '',
+      createdByName:
+        typeof data.createdByName === 'string' ? data.createdByName : '',
+      createdAt: toDate(data.createdAt),
+      updatedAt: toDate(data.updatedAt),
+    };
+  });
+}
+
+/** Cria um caso de teste no repositório. O id (UUID) vira o id do documento. */
+export async function createSavedCase(item: NewSavedCase): Promise<void> {
+  const { id, ...rest } = item;
+  await setDoc(doc(db, TEST_CASES, id), {
+    ...rest,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/** Atualiza um caso de teste salvo. Só o criador (pelas regras). */
+export async function updateSavedCase(
+  id: string,
+  changes: SavedCaseUpdate,
+): Promise<void> {
+  await updateDoc(doc(db, TEST_CASES, id), {
+    ...changes,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/** Remove um caso de teste salvo. */
+export async function deleteSavedCase(id: string): Promise<void> {
+  await deleteDoc(doc(db, TEST_CASES, id));
 }
