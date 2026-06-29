@@ -212,7 +212,7 @@ export default function SprintNotes({ sprints }: SprintNotesProps) {
                         : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
                     }`}
                   >
-                    {note.visibility === 'private' ? '🔒 Privada' : 'Pública'}
+                    {note.visibility === 'private' ? 'Privada' : 'Pública'}
                   </span>
                 </div>
                 {note.createdBy === uid && editingId !== note.id && (

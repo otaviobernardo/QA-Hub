@@ -19,6 +19,8 @@ interface GenError {
 export default function TestCaseGenerator() {
   const { user, apiKeys } = useAuth();
   const {
+    titulo,
+    setTitulo,
     userStory,
     setUserStory,
     criteria,
@@ -36,6 +38,7 @@ export default function TestCaseGenerator() {
     cases,
     setCases,
     updateCase,
+    removeCase,
     statuses,
     setStatus,
     timers,
@@ -47,10 +50,10 @@ export default function TestCaseGenerator() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<GenError | null>(null);
   const [copied, setCopied] = useState(false);
-  // Edição/salvamento de casos gerados no repositório.
+  // Edição de caso gerado + salvamento do conjunto no repositório.
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
-  const [savedIdx, setSavedIdx] = useState<Set<number>>(new Set());
-  const [savingIdx, setSavingIdx] = useState<number | null>(null);
+  const [savingAll, setSavingAll] = useState(false);
+  const [savedAll, setSavedAll] = useState(false);
 
   // Provedores que o QA já configurou (na ordem do registro).
   const configured = useMemo(
@@ -98,6 +101,10 @@ export default function TestCaseGenerator() {
     setError(null);
 
     if (!user) return;
+    if (!titulo.trim()) {
+      setError({ message: 'Informe um título para o conjunto de casos.' });
+      return;
+    }
     if (!userStory.trim() || !criteria.trim()) {
       setError({ message: 'Preencha a User Story e os Critérios de Aceite.' });
       return;
@@ -142,7 +149,13 @@ export default function TestCaseGenerator() {
         tipos: [...tipos],
         casosPorTipo,
       });
-      setCases(result);
+      // Ordena pela ordem de exibição dos tipos (TIPO_OPTIONS).
+      const order = new Map(TIPO_OPTIONS.map((o, i) => [o.value, i]));
+      const sorted = [...result].sort(
+        (a, b) => (order.get(a.tipo) ?? 99) - (order.get(b.tipo) ?? 99),
+      );
+      setCases(sorted);
+      setSavedAll(false);
     } catch (err) {
       if (err instanceof TestCaseGenError) {
         setError({ message: err.message });
@@ -171,30 +184,39 @@ export default function TestCaseGenerator() {
     if (cases) exportCasesCsv(cases);
   };
 
-  // Salva um caso gerado no repositório (com status e tempo atuais).
-  const saveGenerated = async (idx: number): Promise<void> => {
-    if (!user || !cases) return;
-    const tc = cases[idx];
-    const st = statuses[idx];
-    const status: SavedCaseStatus =
-      st === 'pass' ? 'pass' : st === 'fail' ? 'fail' : 'pendente';
-    setSavingIdx(idx);
+  // Salva TODOS os casos gerados no repositório, sob o título (grupo) informado.
+  const saveAll = async (): Promise<void> => {
+    if (!user || !cases || cases.length === 0) return;
+    if (!titulo.trim()) {
+      setError({ message: 'Informe um título para salvar os casos.' });
+      return;
+    }
+    setSavingAll(true);
     try {
-      await createSavedCase({
-        id: uuidv4(),
-        ...tc,
-        sprint: '',
-        modulo: '',
-        status,
-        tempoMs: timerElapsed(timers[idx], Date.now()),
-        createdBy: user.uid,
-        createdByName: user.displayName?.trim() || user.email || 'QA',
-      });
-      setSavedIdx((prev) => new Set(prev).add(idx));
+      const createdByName = user.displayName?.trim() || user.email || 'QA';
+      await Promise.all(
+        cases.map((tc, idx) => {
+          const st = statuses[idx];
+          const status: SavedCaseStatus =
+            st === 'pass' ? 'pass' : st === 'fail' ? 'fail' : 'pendente';
+          return createSavedCase({
+            id: uuidv4(),
+            ...tc,
+            grupo: titulo.trim(),
+            sprint: '',
+            modulo: '',
+            status,
+            tempoMs: timerElapsed(timers[idx], Date.now()),
+            createdBy: user.uid,
+            createdByName,
+          });
+        }),
+      );
+      setSavedAll(true);
     } catch {
-      window.alert('Não foi possível salvar o caso no repositório.');
+      window.alert('Não foi possível salvar os casos no repositório.');
     } finally {
-      setSavingIdx(null);
+      setSavingAll(false);
     }
   };
 
@@ -223,6 +245,26 @@ export default function TestCaseGenerator() {
 
       {/* Entrada */}
       <div className="space-y-4 rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 p-6">
+        <div>
+          <label
+            htmlFor="titulo"
+            className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
+          >
+            Título
+          </label>
+          <input
+            id="titulo"
+            type="text"
+            value={titulo}
+            onChange={(e) => setTitulo(e.target.value)}
+            placeholder="Ex: Recuperação de senha por e-mail"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-selbetti-green focus:ring-2 focus:ring-selbetti-green/30 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500"
+          />
+          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+            Os casos salvos ficam agrupados sob este título no repositório.
+          </p>
+        </div>
+
         <div>
           <label
             htmlFor="userStory"
@@ -426,7 +468,7 @@ export default function TestCaseGenerator() {
                 {cases.length === 1 ? '' : 's'}
               </h2>
               <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
-                <span className="font-medium text-selbetti-green">
+                <span className="font-medium text-selbetti-green dark:text-green-400">
                   {passedCount} passaram
                 </span>{' '}
                 ·{' '}
@@ -435,11 +477,11 @@ export default function TestCaseGenerator() {
                 </span>{' '}
                 · {pendingCount} pendente{pendingCount === 1 ? '' : 's'}
                 <span className="ml-2 text-gray-400 dark:text-gray-500">
-                  · ⏱ {formatTime(totalMs)} no total
+                  · {formatTime(totalMs)} no total
                 </span>
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={handleCopy}
@@ -453,6 +495,18 @@ export default function TestCaseGenerator() {
                 className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700"
               >
                 Exportar CSV
+              </button>
+              <button
+                type="button"
+                onClick={() => void saveAll()}
+                disabled={savingAll || savedAll}
+                className="rounded-md bg-selbetti-green px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-selbetti-green/90 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {savedAll
+                  ? 'Salvo ✓'
+                  : savingAll
+                    ? 'Salvando…'
+                    : `Salvar ${cases.length} no repositório`}
               </button>
             </div>
           </div>
@@ -588,7 +642,7 @@ export default function TestCaseGenerator() {
                       className={`rounded-md border px-3 py-1 text-xs font-semibold transition-colors ${
                         statuses[idx] === 'pass'
                           ? 'border-selbetti-green bg-selbetti-green text-white'
-                          : 'border-gray-300 text-selbetti-green hover:bg-selbetti-green/10 dark:border-gray-600'
+                          : 'border-gray-300 text-selbetti-green hover:bg-selbetti-green/10 dark:border-gray-600 dark:text-green-400'
                       }`}
                     >
                       ✓ Passou
@@ -619,15 +673,10 @@ export default function TestCaseGenerator() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => void saveGenerated(idx)}
-                    disabled={savingIdx === idx || savedIdx.has(idx)}
-                    className="rounded-md border border-selbetti-green px-3 py-1 text-xs font-semibold text-selbetti-green transition-colors hover:bg-selbetti-green/10 disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={() => removeCase(idx)}
+                    className="rounded-md border border-gray-300 px-3 py-1 text-xs font-medium text-gray-500 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-600 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-red-500/10 dark:hover:text-red-400"
                   >
-                    {savedIdx.has(idx)
-                      ? 'Salvo ✓'
-                      : savingIdx === idx
-                        ? 'Salvando…'
-                        : 'Salvar no repositório'}
+                    Excluir
                   </button>
                 </div>
               </article>

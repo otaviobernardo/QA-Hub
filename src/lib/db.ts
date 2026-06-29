@@ -332,6 +332,7 @@ export async function getSavedCases(): Promise<SavedTestCase[]> {
       : 'pendente';
     return {
       id: d.id,
+      grupo: typeof data.grupo === 'string' ? data.grupo : '',
       tipo: (data.tipo ?? 'positivo') as TestCase['tipo'],
       titulo: typeof data.titulo === 'string' ? data.titulo : '',
       descricao: typeof data.descricao === 'string' ? data.descricao : '',

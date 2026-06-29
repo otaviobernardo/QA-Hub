@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Bug } from '../types';
+import { useAuth } from '../context/AuthContext';
 import { getBugs } from '../lib/db';
 import { SEVERITIES, STATUSES, severityBadge, statusBadge } from '../lib/bugOptions';
 import BugTable from './BugTable';
@@ -124,53 +125,68 @@ export default function Dashboard() {
 /* ----------------------------- Visão geral ------------------------ */
 
 function Overview({ bugs, sprints }: { bugs: Bug[]; sprints: string[] }) {
-  const total = bugs.length;
-  const open = bugs.filter((b) => b.status === 'Aberto').length;
-  const inProgress = bugs.filter((b) => b.status === 'Em andamento').length;
-  const resolved = bugs.filter(
+  const { user } = useAuth();
+  const uid = user?.uid ?? '';
+  const [onlyMine, setOnlyMine] = useState(true);
+
+  const visible = onlyMine ? bugs.filter((b) => b.createdBy === uid) : bugs;
+
+  const total = visible.length;
+  const open = visible.filter((b) => b.status === 'Aberto').length;
+  const inProgress = visible.filter((b) => b.status === 'Em andamento').length;
+  const resolved = visible.filter(
     (b) => b.status === 'Resolvido' || b.status === 'Fechado',
   ).length;
-  const critical = bugs.filter((b) => b.severity === 'Crítico').length;
+  const critical = visible.filter((b) => b.severity === 'Crítico').length;
 
   const bySeverity = SEVERITIES.map((s) => ({
     label: s,
-    count: bugs.filter((b) => b.severity === s).length,
+    count: visible.filter((b) => b.severity === s).length,
     badge: severityBadge[s],
   }));
   const byStatus = STATUSES.map((s) => ({
     label: s,
-    count: bugs.filter((b) => b.status === s).length,
+    count: visible.filter((b) => b.status === s).length,
     badge: statusBadge[s],
   }));
 
-  if (total === 0) {
-    return (
-      <div className="space-y-6">
-        <div className="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400">
-          Nenhum bug registrado ainda. Use a aba <strong>Lista de bugs</strong> para
-          criar o primeiro.
-        </div>
-        <SprintNotes sprints={sprints} />
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
-      {/* Cards de métricas */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-        <MetricCard label="Total" value={total} accent="text-gray-800 dark:text-gray-100" />
-        <MetricCard label="Abertos" value={open} accent="text-red-600" />
-        <MetricCard label="Em andamento" value={inProgress} accent="text-selbetti-purple" />
-        <MetricCard label="Resolvidos" value={resolved} accent="text-selbetti-green" />
-        <MetricCard label="Críticos" value={critical} accent="text-selbetti-orange" />
-      </div>
+      {/* Toggle meus / todos */}
+      <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+        <input
+          type="checkbox"
+          checked={onlyMine}
+          onChange={(e) => setOnlyMine(e.target.checked)}
+          className="h-4 w-4 rounded border-gray-300 text-selbetti-green focus:ring-selbetti-green"
+        />
+        {onlyMine ? 'Vendo apenas os meus bugs' : 'Vendo todos os bugs'}
+      </label>
 
-      {/* Distribuições */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <DistributionCard title="Por severidade" items={bySeverity} total={total} />
-        <DistributionCard title="Por status" items={byStatus} total={total} />
-      </div>
+      {total === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400">
+          {bugs.length > 0 && onlyMine
+            ? 'Você ainda não registrou bugs. Desmarque o filtro para ver os de todos.'
+            : 'Nenhum bug registrado ainda. Use a aba Lista de bugs para criar o primeiro.'}
+        </div>
+      ) : (
+        <>
+          {/* Cards de métricas */}
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+            <MetricCard label="Total" value={total} accent="text-gray-800 dark:text-gray-100" />
+            <MetricCard label="Abertos" value={open} accent="text-red-600" />
+            <MetricCard label="Em andamento" value={inProgress} accent="text-selbetti-purple" />
+            <MetricCard label="Resolvidos" value={resolved} accent="text-selbetti-green" />
+            <MetricCard label="Críticos" value={critical} accent="text-selbetti-orange" />
+          </div>
+
+          {/* Distribuições */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <DistributionCard title="Por severidade" items={bySeverity} total={total} />
+            <DistributionCard title="Por status" items={byStatus} total={total} />
+          </div>
+        </>
+      )}
 
       <SprintNotes sprints={sprints} />
     </div>

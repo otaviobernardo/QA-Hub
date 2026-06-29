@@ -59,6 +59,7 @@ export type SavedCaseStatus = 'pendente' | 'pass' | 'fail';
 /** Caso de teste salvo no repositório (com metadados de execução). */
 export interface SavedTestCase extends TestCase {
   id: string;
+  grupo: string;               // título do conjunto sob o qual o caso foi salvo
   sprint: string;
   modulo: string;
   status: SavedCaseStatus;

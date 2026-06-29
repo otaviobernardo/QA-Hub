@@ -66,6 +66,6 @@ export const SAVED_STATUS_LABEL: Record<SavedCaseStatus, string> = {
 
 export const savedStatusBadge: Record<SavedCaseStatus, string> = {
   pendente: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
-  pass: 'bg-selbetti-green/15 text-selbetti-green',
+  pass: 'bg-selbetti-green/15 text-selbetti-green dark:bg-green-500/20 dark:text-green-300',
   fail: 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300',
 };

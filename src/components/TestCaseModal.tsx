@@ -3,13 +3,15 @@ import type { TestCase, SavedCaseStatus } from '../types';
 import { TIPO_OPTIONS, SAVED_STATUS_LABEL } from '../lib/testCaseOptions';
 
 export interface TestCaseModalResult extends TestCase {
+  grupo: string;
   sprint: string;
   modulo: string;
   status: SavedCaseStatus;
 }
 
 interface TestCaseModalProps {
-  value: TestCase & Partial<{ sprint: string; modulo: string; status: SavedCaseStatus }>;
+  value: TestCase &
+    Partial<{ grupo: string; sprint: string; modulo: string; status: SavedCaseStatus }>;
   /** Mostra os campos de repositório (sprint, módulo, status). */
   withMeta: boolean;
   title: string;
@@ -40,6 +42,7 @@ export default function TestCaseModal({
   const [com, setCom] = useState(value.com ?? '');
   const [paraValidar, setParaValidar] = useState(value.para_validar ?? '');
   const [eCampo, setECampo] = useState(value.e ?? '');
+  const [grupo, setGrupo] = useState(value.grupo ?? '');
   const [sprint, setSprint] = useState(value.sprint ?? '');
   const [modulo, setModulo] = useState(value.modulo ?? '');
   const [status, setStatus] = useState<SavedCaseStatus>(value.status ?? 'pendente');
@@ -62,6 +65,7 @@ export default function TestCaseModal({
       com: com.trim() || undefined,
       para_validar: paraValidar.trim() || undefined,
       e: eCampo.trim() || undefined,
+      grupo: grupo.trim(),
       sprint: sprint.trim(),
       modulo: modulo.trim(),
       status,
@@ -119,6 +123,19 @@ export default function TestCaseModal({
               </select>
             </div>
           </div>
+
+          {withMeta && (
+            <div>
+              <label className={labelClass}>Título do conjunto</label>
+              <input
+                type="text"
+                value={grupo}
+                onChange={(e) => setGrupo(e.target.value)}
+                placeholder="Ex: Recuperação de senha"
+                className={inputClass}
+              />
+            </div>
+          )}
 
           {withMeta && (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">

@@ -26,6 +26,7 @@ export function timerElapsed(t: TimerState | undefined, now: number): number {
 const STORAGE_KEY = 'qa-hub-generator';
 
 interface PersistedState {
+  titulo: string;
   userStory: string;
   criteria: string;
   devAnalysis: string;
@@ -39,6 +40,7 @@ interface PersistedState {
 }
 
 const INITIAL: PersistedState = {
+  titulo: '',
   userStory: '',
   criteria: '',
   devAnalysis: '',
@@ -65,6 +67,8 @@ function loadState(): PersistedState {
 }
 
 interface GeneratorContextValue {
+  titulo: string;
+  setTitulo: (v: string) => void;
   userStory: string;
   setUserStory: (v: string) => void;
   criteria: string;
@@ -84,6 +88,8 @@ interface GeneratorContextValue {
   setCases: (cases: TestCase[] | null) => void;
   /** Atualiza um caso gerado in-place (edição antes de salvar). */
   updateCase: (index: number, updated: TestCase) => void;
+  /** Remove um caso gerado, reindexando status e cronômetros. */
+  removeCase: (index: number) => void;
   statuses: Record<number, CaseStatus>;
   /** Marca/desmarca o status de um caso (null = volta para pendente). */
   setStatus: (index: number, status: CaseStatus | null) => void;
@@ -114,6 +120,8 @@ export function GeneratorProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, ...p }));
 
   const value: GeneratorContextValue = {
+    titulo: state.titulo,
+    setTitulo: (v) => patch({ titulo: v }),
     userStory: state.userStory,
     setUserStory: (v) => patch({ userStory: v }),
     criteria: state.criteria,
@@ -142,6 +150,28 @@ export function GeneratorProvider({ children }: { children: ReactNode }) {
         const next = s.cases.slice();
         next[index] = updated;
         return { ...s, cases: next };
+      }),
+    removeCase: (index) =>
+      setState((s) => {
+        if (!s.cases) return s;
+        const cases = s.cases.slice();
+        cases.splice(index, 1);
+        // Reindexa os mapas (chaves > index descem 1; a chave index é removida).
+        const reindex = <T,>(m: Record<number, T>): Record<number, T> => {
+          const out: Record<number, T> = {};
+          for (const [k, v] of Object.entries(m)) {
+            const i = Number(k);
+            if (i < index) out[i] = v;
+            else if (i > index) out[i - 1] = v;
+          }
+          return out;
+        };
+        return {
+          ...s,
+          cases,
+          statuses: reindex(s.statuses),
+          timers: reindex(s.timers),
+        };
       }),
     statuses: state.statuses,
     setStatus: (index, status) =>

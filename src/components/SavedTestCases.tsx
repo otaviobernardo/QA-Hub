@@ -35,6 +35,7 @@ type ModalState =
   | null;
 
 const emptyCase: TestCase & {
+  grupo: string;
   sprint: string;
   modulo: string;
   status: SavedCaseStatus;
@@ -45,6 +46,7 @@ const emptyCase: TestCase & {
   passos: [],
   resultado_esperado: '',
   ca_coberto: '',
+  grupo: '',
   sprint: '',
   modulo: '',
   status: 'pendente',
@@ -67,6 +69,15 @@ export default function SavedTestCases() {
 
   const [modal, setModal] = useState<ModalState>(null);
   const [saving, setSaving] = useState(false);
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
+
+  const toggleGroup = (g: string) =>
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(g)) next.delete(g);
+      else next.add(g);
+      return next;
+    });
 
   const load = async (): Promise<void> => {
     setLoading(true);
@@ -101,12 +112,24 @@ export default function SavedTestCases() {
       if (sprintFilter && c.sprint !== sprintFilter) return false;
       if (moduloFilter && c.modulo !== moduloFilter) return false;
       if (term) {
-        const hay = `${c.titulo} ${c.descricao} ${c.modulo}`.toLowerCase();
+        const hay = `${c.grupo} ${c.titulo} ${c.descricao} ${c.modulo}`.toLowerCase();
         if (!hay.includes(term)) return false;
       }
       return true;
     });
   }, [cases, search, tipoFilter, statusFilter, sprintFilter, moduloFilter]);
+
+  // Agrupa os casos filtrados por título (grupo), preservando a ordem (mais recente primeiro).
+  const groups = useMemo(() => {
+    const map = new Map<string, SavedTestCase[]>();
+    for (const c of filtered) {
+      const key = c.grupo || 'Sem título';
+      const arr = map.get(key);
+      if (arr) arr.push(c);
+      else map.set(key, [c]);
+    }
+    return [...map.entries()];
+  }, [filtered]);
 
   const handleSave = async (result: TestCaseModalResult): Promise<void> => {
     if (!user || !modal) return;
@@ -238,68 +261,105 @@ export default function SavedTestCases() {
           Gere casos no Gerador e clique em “Salvar”, ou crie um manual.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-gray-200 bg-gray-50 text-xs uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:bg-gray-900/50 dark:text-gray-400">
-              <tr>
-                <th className="px-4 py-3 font-medium">Título</th>
-                <th className="px-4 py-3 font-medium">Tipo</th>
-                <th className="px-4 py-3 font-medium">Módulo</th>
-                <th className="px-4 py-3 font-medium">Sprint</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Tempo</th>
-                <th className="px-4 py-3 text-right font-medium">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-              {filtered.map((c) => (
-                <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                  <td className="max-w-xs truncate px-4 py-3 font-medium text-gray-800 dark:text-gray-100">
-                    {c.titulo}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${tipoBadge[c.tipo]}`}>
-                      {tipoLabel[c.tipo]}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{c.modulo || '—'}</td>
-                  <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{c.sprint || '—'}</td>
-                  <td className="px-4 py-3">
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${savedStatusBadge[c.status]}`}>
-                      {SAVED_STATUS_LABEL[c.status]}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-gray-600 dark:text-gray-300">
-                    {formatTime(c.tempoMs)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex justify-end gap-1">
-                      <button
-                        type="button"
-                        onClick={() => setModal({ mode: 'edit', item: c })}
-                        className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-selbetti-purple dark:hover:bg-gray-700"
-                        aria-label="Editar"
-                        title="Editar"
-                      >
-                        <PencilIcon />
-                      </button>
-                      {c.createdBy === uid && (
-                        <button
-                          type="button"
-                          onClick={() => void handleDelete(c)}
-                          className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/15"
-                          aria-label="Excluir"
-                          title="Excluir"
-                        >
-                          <TrashIcon />
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-3">
+          {groups.map(([grupo, items]) => {
+            const isOpen = openGroups.has(grupo);
+            const passed = items.filter((c) => c.status === 'pass').length;
+            return (
+              <div
+                key={grupo}
+                className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+              >
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(grupo)}
+                  aria-expanded={isOpen}
+                  className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                >
+                  <span className="flex-1 font-semibold text-gray-800 dark:text-gray-100">
+                    {grupo}
+                  </span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    {items.length} caso{items.length === 1 ? '' : 's'} · {passed}/
+                    {items.length} passaram
+                  </span>
+                  <svg
+                    className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
+                  </svg>
+                </button>
+
+                {isOpen && (
+                  <div className="overflow-x-auto border-t border-gray-100 dark:border-gray-700">
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500 dark:bg-gray-900/50 dark:text-gray-400">
+                        <tr>
+                          <th className="px-4 py-2 font-medium">Título</th>
+                          <th className="px-4 py-2 font-medium">Tipo</th>
+                          <th className="px-4 py-2 font-medium">Módulo</th>
+                          <th className="px-4 py-2 font-medium">Status</th>
+                          <th className="px-4 py-2 font-medium">Tempo</th>
+                          <th className="px-4 py-2 text-right font-medium">Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                        {items.map((c) => (
+                          <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                            <td className="max-w-xs truncate px-4 py-2 font-medium text-gray-800 dark:text-gray-100">
+                              {c.titulo}
+                            </td>
+                            <td className="px-4 py-2">
+                              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${tipoBadge[c.tipo]}`}>
+                                {tipoLabel[c.tipo]}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{c.modulo || '—'}</td>
+                            <td className="px-4 py-2">
+                              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${savedStatusBadge[c.status]}`}>
+                                {SAVED_STATUS_LABEL[c.status]}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2 font-mono text-xs text-gray-600 dark:text-gray-300">
+                              {formatTime(c.tempoMs)}
+                            </td>
+                            <td className="px-4 py-2">
+                              <div className="flex justify-end gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setModal({ mode: 'edit', item: c })}
+                                  className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-selbetti-purple dark:hover:bg-gray-700"
+                                  aria-label="Editar"
+                                  title="Editar"
+                                >
+                                  <PencilIcon />
+                                </button>
+                                {c.createdBy === uid && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleDelete(c)}
+                                    className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/15"
+                                    aria-label="Excluir"
+                                    title="Excluir"
+                                  >
+                                    <TrashIcon />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
