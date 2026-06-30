@@ -35,6 +35,10 @@ export default function Execucao() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
+  const [projetoFilter, setProjetoFilter] = useState('');
+  const [sprintFilter, setSprintFilter] = useState('');
+  const [search, setSearch] = useState('');
+
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   // caseId -> instante de início do cronômetro (epoch ms). Ausente = parado.
   // Persistido no localStorage para sobreviver a troca de aba/reload (o startedAt
@@ -73,16 +77,38 @@ export default function Execucao() {
     return () => window.clearInterval(id);
   }, [anyRunning]);
 
+  const projetos = useMemo(
+    () => [...new Set(cases.map((c) => c.projeto).filter(Boolean))].sort(),
+    [cases],
+  );
+  const sprints = useMemo(
+    () => [...new Set(cases.map((c) => c.sprint).filter(Boolean))].sort(),
+    [cases],
+  );
+
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return cases.filter((c) => {
+      if (projetoFilter && c.projeto !== projetoFilter) return false;
+      if (sprintFilter && c.sprint !== sprintFilter) return false;
+      if (term) {
+        const hay = `${c.grupo} ${c.titulo} ${c.projeto} ${c.sprint}`.toLowerCase();
+        if (!hay.includes(term)) return false;
+      }
+      return true;
+    });
+  }, [cases, projetoFilter, sprintFilter, search]);
+
   const groups = useMemo(() => {
     const map = new Map<string, SavedTestCase[]>();
-    for (const c of cases) {
+    for (const c of filtered) {
       const key = c.grupo || 'Sem título';
       const arr = map.get(key);
       if (arr) arr.push(c);
       else map.set(key, [c]);
     }
     return [...map.entries()];
-  }, [cases]);
+  }, [filtered]);
 
   const toggleGroup = (g: string) =>
     setOpenGroups((prev) => {
@@ -193,6 +219,46 @@ export default function Execucao() {
         </p>
       </div>
 
+      {/* Filtros */}
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar por feature, título…"
+          className="min-w-[200px] flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-selbetti-green focus:ring-2 focus:ring-selbetti-green/30 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500"
+        />
+        <select
+          value={projetoFilter}
+          onChange={(e) => setProjetoFilter(e.target.value)}
+          className="app-select rounded-md border border-gray-300 px-2 py-2 text-sm outline-none focus:border-selbetti-green dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+        >
+          <option value="">Projeto: todos</option>
+          {projetos.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+        </select>
+        <select
+          value={sprintFilter}
+          onChange={(e) => setSprintFilter(e.target.value)}
+          className="app-select rounded-md border border-gray-300 px-2 py-2 text-sm outline-none focus:border-selbetti-green dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+        >
+          <option value="">Sprint: todas</option>
+          {sprints.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {groups.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400">
+          Nenhum caso com os filtros atuais.
+        </div>
+      ) : (
       <div className="space-y-3">
         {groups.map(([grupo, items]) => {
           const isOpen = openGroups.has(grupo);
@@ -210,10 +276,19 @@ export default function Execucao() {
                 aria-expanded={isOpen}
                 className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/50"
               >
-                <span className="flex-1 font-semibold text-gray-800 dark:text-gray-100">
-                  {grupo}
-                </span>
-                <span className="text-xs text-gray-500 dark:text-gray-400">
+                <div className="min-w-0 flex-1">
+                  {(items[0]?.projeto || items[0]?.sprint) && (
+                    <span className="mb-0.5 block truncate text-xs text-gray-400 dark:text-gray-500">
+                      {[items[0]?.projeto, items[0]?.sprint]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </span>
+                  )}
+                  <span className="block truncate font-semibold text-gray-800 dark:text-gray-100">
+                    {grupo}
+                  </span>
+                </div>
+                <span className="shrink-0 text-xs text-gray-500 dark:text-gray-400">
                   <span className="text-selbetti-green dark:text-green-400">{passed} ok</span>
                   {' · '}
                   <span className="text-red-600 dark:text-red-400">{failed} falhas</span>
@@ -394,6 +469,7 @@ export default function Execucao() {
           );
         })}
       </div>
+      )}
     </div>
   );
 }
