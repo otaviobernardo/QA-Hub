@@ -300,34 +300,21 @@ export default function TestCaseGenerator() {
         });
         return;
       }
+      // Procura a task "Mapa de testes" que é FILHA do card informado no import.
       const mapa = await findMapaDeTestes(pat, cardId.trim());
       if (!mapa) {
         setMapaMsg({
           type: 'error',
-          text: 'A task "Mapa de testes" não foi encontrada no card.',
+          text: 'A task filha "Mapa de testes" não foi encontrada no card informado.',
         });
         return;
       }
-      // Se a task já está finalizada (Done), confirma antes de sobrescrever —
-      // evita escrever, sem querer, numa task de mapa de testes já encerrada.
-      if (
-        mapa.state === 'Done' &&
-        !window.confirm(
-          'A task "Mapa de testes" já está finalizada (Done). Sobrescrever e manter finalizada?',
-        )
-      ) {
-        setMapaMsg({
-          type: 'error',
-          text: 'Colagem cancelada — a task "Mapa de testes" já estava finalizada.',
-        });
-        return;
-      }
+      // Escreve os casos na descrição dessa task filha e a move para finalizado.
       await writeMapaDeTestes(pat, mapa.id, casesToHtml(cases));
-      // Move o card para finalizado (Done).
       await updateState(pat, mapa.id, 'Done');
       setMapaMsg({
         type: 'ok',
-        text: 'Casos colados e task "Mapa de testes" finalizada (Done).',
+        text: `Casos salvos na task "Mapa de testes" (#${mapa.id}) e finalizada (Done).`,
       });
     } catch (err) {
       setMapaMsg({
@@ -407,26 +394,6 @@ export default function TestCaseGenerator() {
 
       {/* Entrada */}
       <div className="space-y-4 rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 p-6">
-        <div>
-          <label
-            htmlFor="titulo"
-            className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
-          >
-            Título
-          </label>
-          <input
-            id="titulo"
-            type="text"
-            value={titulo}
-            onChange={(e) => setTitulo(e.target.value)}
-            placeholder="Ex: Recuperação de senha por e-mail"
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-selbetti-green focus:ring-2 focus:ring-selbetti-green/30 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500"
-          />
-          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-            Os casos salvos ficam agrupados sob este título no repositório.
-          </p>
-        </div>
-
         {/* Importar campos a partir de um card do Azure DevOps */}
         <div className="rounded-md border border-selbetti-purple/30 bg-selbetti-purple/5 p-4">
           <label
@@ -479,6 +446,26 @@ export default function TestCaseGenerator() {
               {importMsg.text}
             </div>
           )}
+        </div>
+
+        <div>
+          <label
+            htmlFor="titulo"
+            className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
+          >
+            Título
+          </label>
+          <input
+            id="titulo"
+            type="text"
+            value={titulo}
+            onChange={(e) => setTitulo(e.target.value)}
+            placeholder="Ex: Recuperação de senha por e-mail"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-selbetti-green focus:ring-2 focus:ring-selbetti-green/30 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500"
+          />
+          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+            Os casos salvos ficam agrupados sob este título no repositório.
+          </p>
         </div>
 
         <div>
