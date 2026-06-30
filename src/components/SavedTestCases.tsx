@@ -36,7 +36,7 @@ type ModalState =
 
 const emptyCase: TestCase & {
   grupo: string;
-  projeto: string;
+  squad: string;
   sprint: string;
   modulo: string;
   status: SavedCaseStatus;
@@ -48,7 +48,7 @@ const emptyCase: TestCase & {
   resultado_esperado: '',
   ca_coberto: '',
   grupo: '',
-  projeto: '',
+  squad: '',
   sprint: '',
   modulo: '',
   status: 'pendente',
@@ -66,7 +66,7 @@ export default function SavedTestCases() {
   const [search, setSearch] = useState('');
   const [tipoFilter, setTipoFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [projetoFilter, setProjetoFilter] = useState('');
+  const [squadFilter, setSquadFilter] = useState('');
   const [sprintFilter, setSprintFilter] = useState('');
   const [moduloFilter, setModuloFilter] = useState('');
 
@@ -121,8 +121,8 @@ export default function SavedTestCases() {
     void load();
   }, []);
 
-  const projetos = useMemo(
-    () => [...new Set(cases.map((c) => c.projeto).filter(Boolean))].sort(),
+  const squads = useMemo(
+    () => [...new Set(cases.map((c) => c.squad).filter(Boolean))].sort(),
     [cases],
   );
   const sprints = useMemo(
@@ -139,12 +139,12 @@ export default function SavedTestCases() {
     return cases.filter((c) => {
       if (tipoFilter && c.tipo !== tipoFilter) return false;
       if (statusFilter && c.status !== statusFilter) return false;
-      if (projetoFilter && c.projeto !== projetoFilter) return false;
+      if (squadFilter && c.squad !== squadFilter) return false;
       if (sprintFilter && c.sprint !== sprintFilter) return false;
       if (moduloFilter && c.modulo !== moduloFilter) return false;
       if (term) {
         const hay =
-          `${c.grupo} ${c.titulo} ${c.descricao} ${c.modulo} ${c.projeto} ${c.sprint}`.toLowerCase();
+          `${c.grupo} ${c.titulo} ${c.descricao} ${c.modulo} ${c.squad} ${c.sprint}`.toLowerCase();
         if (!hay.includes(term)) return false;
       }
       return true;
@@ -154,7 +154,7 @@ export default function SavedTestCases() {
     search,
     tipoFilter,
     statusFilter,
-    projetoFilter,
+    squadFilter,
     sprintFilter,
     moduloFilter,
   ]);
@@ -288,8 +288,8 @@ export default function SavedTestCases() {
             </option>
           ))}
         </Filter>
-        <Filter value={projetoFilter} onChange={setProjetoFilter} placeholder="Projeto: todos">
-          {projetos.map((p) => (
+        <Filter value={squadFilter} onChange={setSquadFilter} placeholder="Squad: todos">
+          {squads.map((p) => (
             <option key={p} value={p}>
               {p}
             </option>
@@ -386,9 +386,9 @@ export default function SavedTestCases() {
                     <p className="truncate font-semibold text-gray-800 dark:text-gray-100">
                       {grupo}
                     </p>
-                    {(items[0]?.projeto || items[0]?.sprint) && (
+                    {(items[0]?.squad || items[0]?.sprint) && (
                       <p className="mt-0.5 truncate text-xs text-gray-400 dark:text-gray-500">
-                        {[items[0]?.projeto, items[0]?.sprint]
+                        {[items[0]?.squad, items[0]?.sprint]
                           .filter(Boolean)
                           .join(' · ')}
                       </p>
@@ -558,7 +558,7 @@ function bodyText(c: SavedTestCase): string {
 
 function exportCsv(cases: SavedTestCase[]): void {
   const headers = [
-    'Projeto',
+    'Squad',
     'Sprint',
     'Feature',
     'Tipo',
@@ -572,7 +572,7 @@ function exportCsv(cases: SavedTestCase[]): void {
   ];
   const rows = cases.map((c) =>
     [
-      c.projeto,
+      c.squad,
       c.sprint,
       c.grupo,
       tipoLabel[c.tipo],

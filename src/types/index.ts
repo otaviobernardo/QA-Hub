@@ -62,7 +62,7 @@ export type SavedCaseStatus = 'pendente' | 'pass' | 'fail';
 /** Caso de teste salvo no repositório (com metadados de execução). */
 export interface SavedTestCase extends TestCase {
   id: string;
-  projeto: string;             // Projeto (Area Path do Azure) — nível mais alto
+  squad: string;               // Squad/time (nó do Area Path do Azure) — nível mais alto
   sprint: string;              // Sprint (Iteration Path do Azure)
   grupo: string;               // Feature: título do conjunto (ID + PBI) sob o qual foi salvo
   modulo: string;

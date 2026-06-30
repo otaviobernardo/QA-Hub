@@ -35,8 +35,8 @@ export default function TestCaseGenerator() {
   const {
     titulo,
     setTitulo,
-    projeto,
-    setProjeto,
+    squad,
+    setSquad,
     sprint,
     setSprint,
     cardId,
@@ -139,8 +139,8 @@ export default function TestCaseGenerator() {
       const data = await importFromCard(pat, raw);
       // Título automático: ID do card + título do PBI.
       if (data.title) setTitulo(`${raw} - ${data.title}`);
-      // Projeto e Sprint vêm automaticamente do card (Area/Iteration Path).
-      setProjeto(data.projeto);
+      // Squad e Sprint vêm automaticamente do card (Area/Iteration Path).
+      setSquad(data.squad);
       setSprint(data.sprint);
       setUserStory(data.userStory);
       setCriteria(data.criteria);
@@ -270,7 +270,7 @@ export default function TestCaseGenerator() {
             id: caseIds[idx],
             ...tc,
             grupo: titulo.trim(),
-            projeto: projeto.trim(),
+            squad: squad.trim(),
             sprint: sprint.trim(),
             modulo: '',
             status: 'pendente',
@@ -372,7 +372,7 @@ export default function TestCaseGenerator() {
     )
       return;
     setTitulo('');
-    setProjeto('');
+    setSquad('');
     setSprint('');
     setCardId('');
     setUserStory('');
@@ -484,17 +484,17 @@ export default function TestCaseGenerator() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label
-              htmlFor="projeto"
+              htmlFor="squad"
               className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
             >
-              Projeto
+              Squad
             </label>
             <input
-              id="projeto"
+              id="squad"
               type="text"
-              value={projeto}
-              onChange={(e) => setProjeto(e.target.value)}
-              placeholder="Ex: SHARE-4"
+              value={squad}
+              onChange={(e) => setSquad(e.target.value)}
+              placeholder="Ex: DI, SQUAD SHARE-4"
               className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-selbetti-green focus:ring-2 focus:ring-selbetti-green/30 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500"
             />
           </div>
@@ -515,7 +515,7 @@ export default function TestCaseGenerator() {
             />
           </div>
           <p className="text-xs text-gray-400 dark:text-gray-500 sm:col-span-2">
-            Preenchidos automaticamente ao importar do Azure (projeto e sprint do card). Edite se precisar.
+            Preenchidos automaticamente ao importar do Azure (squad e sprint do card). Edite se precisar.
           </p>
         </div>
 

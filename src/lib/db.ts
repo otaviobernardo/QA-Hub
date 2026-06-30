@@ -369,7 +369,7 @@ export async function getSavedCases(): Promise<SavedTestCase[]> {
       com: optStr(data.com),
       para_validar: optStr(data.para_validar),
       e: optStr(data.e),
-      projeto: typeof data.projeto === 'string' ? data.projeto : '',
+      squad: typeof data.squad === 'string' ? data.squad : '',
       sprint: typeof data.sprint === 'string' ? data.sprint : '',
       modulo: typeof data.modulo === 'string' ? data.modulo : '',
       status,

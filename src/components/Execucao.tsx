@@ -35,7 +35,7 @@ export default function Execucao() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
-  const [projetoFilter, setProjetoFilter] = useState('');
+  const [squadFilter, setSquadFilter] = useState('');
   const [sprintFilter, setSprintFilter] = useState('');
   const [search, setSearch] = useState('');
 
@@ -77,8 +77,8 @@ export default function Execucao() {
     return () => window.clearInterval(id);
   }, [anyRunning]);
 
-  const projetos = useMemo(
-    () => [...new Set(cases.map((c) => c.projeto).filter(Boolean))].sort(),
+  const squads = useMemo(
+    () => [...new Set(cases.map((c) => c.squad).filter(Boolean))].sort(),
     [cases],
   );
   const sprints = useMemo(
@@ -89,15 +89,15 @@ export default function Execucao() {
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     return cases.filter((c) => {
-      if (projetoFilter && c.projeto !== projetoFilter) return false;
+      if (squadFilter && c.squad !== squadFilter) return false;
       if (sprintFilter && c.sprint !== sprintFilter) return false;
       if (term) {
-        const hay = `${c.grupo} ${c.titulo} ${c.projeto} ${c.sprint}`.toLowerCase();
+        const hay = `${c.grupo} ${c.titulo} ${c.squad} ${c.sprint}`.toLowerCase();
         if (!hay.includes(term)) return false;
       }
       return true;
     });
-  }, [cases, projetoFilter, sprintFilter, search]);
+  }, [cases, squadFilter, sprintFilter, search]);
 
   const groups = useMemo(() => {
     const map = new Map<string, SavedTestCase[]>();
@@ -229,12 +229,12 @@ export default function Execucao() {
           className="min-w-[200px] flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-selbetti-green focus:ring-2 focus:ring-selbetti-green/30 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500"
         />
         <select
-          value={projetoFilter}
-          onChange={(e) => setProjetoFilter(e.target.value)}
+          value={squadFilter}
+          onChange={(e) => setSquadFilter(e.target.value)}
           className="app-select rounded-md border border-gray-300 px-2 py-2 text-sm outline-none focus:border-selbetti-green dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
         >
-          <option value="">Projeto: todos</option>
-          {projetos.map((p) => (
+          <option value="">Squad: todos</option>
+          {squads.map((p) => (
             <option key={p} value={p}>
               {p}
             </option>
@@ -277,9 +277,9 @@ export default function Execucao() {
                 className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/50"
               >
                 <div className="min-w-0 flex-1">
-                  {(items[0]?.projeto || items[0]?.sprint) && (
+                  {(items[0]?.squad || items[0]?.sprint) && (
                     <span className="mb-0.5 block truncate text-xs text-gray-400 dark:text-gray-500">
-                      {[items[0]?.projeto, items[0]?.sprint]
+                      {[items[0]?.squad, items[0]?.sprint]
                         .filter(Boolean)
                         .join(' · ')}
                     </span>

@@ -4,7 +4,7 @@ import { TIPO_OPTIONS, SAVED_STATUS_LABEL } from '../lib/testCaseOptions';
 
 export interface TestCaseModalResult extends TestCase {
   grupo: string;
-  projeto: string;
+  squad: string;
   sprint: string;
   modulo: string;
   status: SavedCaseStatus;
@@ -14,7 +14,7 @@ interface TestCaseModalProps {
   value: TestCase &
     Partial<{
       grupo: string;
-      projeto: string;
+      squad: string;
       sprint: string;
       modulo: string;
       status: SavedCaseStatus;
@@ -50,7 +50,7 @@ export default function TestCaseModal({
   const [paraValidar, setParaValidar] = useState(value.para_validar ?? '');
   const [eCampo, setECampo] = useState(value.e ?? '');
   const [grupo, setGrupo] = useState(value.grupo ?? '');
-  const [projeto, setProjeto] = useState(value.projeto ?? '');
+  const [squad, setSquad] = useState(value.squad ?? '');
   const [sprint, setSprint] = useState(value.sprint ?? '');
   const [modulo, setModulo] = useState(value.modulo ?? '');
   const [status, setStatus] = useState<SavedCaseStatus>(value.status ?? 'pendente');
@@ -74,7 +74,7 @@ export default function TestCaseModal({
       para_validar: paraValidar.trim() || undefined,
       e: eCampo.trim() || undefined,
       grupo: grupo.trim(),
-      projeto: projeto.trim(),
+      squad: squad.trim(),
       sprint: sprint.trim(),
       modulo: modulo.trim(),
       status,
@@ -146,12 +146,12 @@ export default function TestCaseModal({
                 />
               </div>
               <div>
-                <label className={labelClass}>Projeto</label>
+                <label className={labelClass}>Squad</label>
                 <input
                   type="text"
-                  value={projeto}
-                  onChange={(e) => setProjeto(e.target.value)}
-                  placeholder="Ex: SHARE-4"
+                  value={squad}
+                  onChange={(e) => setSquad(e.target.value)}
+                  placeholder="Ex: DI, SQUAD SHARE-4"
                   className={inputClass}
                 />
               </div>

@@ -102,17 +102,25 @@ export interface CardImport {
   criteria: string;
   devAnalysis: string;
   foundAnalise: boolean;
-  /** Projeto = raiz do Area Path (ex.: "SHARE-4"). */
-  projeto: string;
+  /** Squad/time = nó do time no Area Path (ex.: "DI", "SQUAD SHARE-4"). */
+  squad: string;
   /** Sprint = folha do Iteration Path (ex.: "[SCHERER] Integração Autentique"). */
   sprint: string;
   /** ID do PBI importado. */
   cardId: string;
 }
 
-/** Raiz de um path do Azure (Area/Iteration): primeiro segmento. */
-function pathRoot(p: string): string {
-  return p.split('\\')[0]?.trim() ?? '';
+/**
+ * Squad/time a partir do Area Path. No SHARE-4 a estrutura é
+ * "Projeto\\Squad\\..." (ex.: "SHARE-4\\DI"), então o time é o 2º segmento.
+ * Cai para o 1º segmento se não houver sub-área.
+ */
+function areaTeam(p: string): string {
+  const parts = p
+    .split('\\')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return parts[1] ?? parts[0] ?? '';
 }
 
 /** Folha de um path do Azure (Area/Iteration): último segmento. */
@@ -154,7 +162,7 @@ export async function importFromCard(
     criteria,
     devAnalysis,
     foundAnalise,
-    projeto: pathRoot(field(pbi, 'System.AreaPath')),
+    squad: areaTeam(field(pbi, 'System.AreaPath')),
     sprint: pathLeaf(field(pbi, 'System.IterationPath')),
     cardId: String(cardId),
   };

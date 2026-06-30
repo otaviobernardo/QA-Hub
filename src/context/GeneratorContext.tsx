@@ -28,7 +28,7 @@ const STORAGE_KEY = 'qa-hub-generator';
 
 interface PersistedState {
   titulo: string;
-  projeto: string;
+  squad: string;
   sprint: string;
   cardId: string;
   userStory: string;
@@ -47,7 +47,7 @@ interface PersistedState {
 
 const INITIAL: PersistedState = {
   titulo: '',
-  projeto: '',
+  squad: '',
   sprint: '',
   cardId: '',
   userStory: '',
@@ -85,8 +85,8 @@ function loadState(): PersistedState {
 interface GeneratorContextValue {
   titulo: string;
   setTitulo: (v: string) => void;
-  projeto: string;
-  setProjeto: (v: string) => void;
+  squad: string;
+  setSquad: (v: string) => void;
   sprint: string;
   setSprint: (v: string) => void;
   cardId: string;
@@ -150,8 +150,8 @@ export function GeneratorProvider({ children }: { children: ReactNode }) {
   const value: GeneratorContextValue = {
     titulo: state.titulo,
     setTitulo: (v) => patch({ titulo: v }),
-    projeto: state.projeto,
-    setProjeto: (v) => patch({ projeto: v }),
+    squad: state.squad,
+    setSquad: (v) => patch({ squad: v }),
     sprint: state.sprint,
     setSprint: (v) => patch({ sprint: v }),
     cardId: state.cardId,
