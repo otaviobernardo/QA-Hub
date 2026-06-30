@@ -3,23 +3,15 @@ import type { Bug } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { getBugs } from '../lib/db';
 import { SEVERITIES, STATUSES, severityBadge, statusBadge } from '../lib/bugOptions';
-import BugTable from './BugTable';
-import BugModal, { type BugModalMode } from './BugModal';
 import SprintNotes from './SprintNotes';
 
-type Tab = 'overview' | 'trends' | 'list';
-
-interface ModalState {
-  mode: BugModalMode;
-  bug?: Bug;
-}
+type Tab = 'overview' | 'trends';
 
 export default function Dashboard() {
   const [bugs, setBugs] = useState<Bug[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [tab, setTab] = useState<Tab>('overview');
-  const [modal, setModal] = useState<ModalState | null>(null);
 
   const loadBugs = async (): Promise<void> => {
     setLoading(true);
@@ -81,43 +73,11 @@ export default function Dashboard() {
         <TabButton active={tab === 'trends'} onClick={() => setTab('trends')}>
           Tendências
         </TabButton>
-        <TabButton active={tab === 'list'} onClick={() => setTab('list')}>
-          Lista de bugs
-        </TabButton>
       </div>
 
       {tab === 'overview' && <Overview bugs={bugs} sprints={sprints} />}
 
       {tab === 'trends' && <Trends bugs={bugs} />}
-
-      {tab === 'list' && (
-        <div className="space-y-4">
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => setModal({ mode: 'create' })}
-              className="rounded-md bg-selbetti-green px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-selbetti-green/90"
-            >
-              + Novo bug
-            </button>
-          </div>
-          <BugTable
-            bugs={bugs}
-            onView={(bug) => setModal({ mode: 'view', bug })}
-            onEdit={(bug) => setModal({ mode: 'edit', bug })}
-            onChanged={() => void loadBugs()}
-          />
-        </div>
-      )}
-
-      {modal && (
-        <BugModal
-          mode={modal.mode}
-          bug={modal.bug}
-          onClose={() => setModal(null)}
-          onSaved={() => void loadBugs()}
-        />
-      )}
     </div>
   );
 }

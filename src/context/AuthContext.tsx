@@ -14,6 +14,8 @@ interface AuthContextValue {
   user: User | null;
   /** Chaves de IA configuradas, por provedor (ex: { anthropic: '...', gemini: '...' }). */
   apiKeys: Record<string, string>;
+  /** PAT do Azure DevOps, ou undefined se não configurado. */
+  azurePat: string | undefined;
   /** true quando há ao menos uma chave de IA configurada. */
   hasApiKey: boolean;
   /** true enquanto o estado inicial de auth ainda está sendo resolvido. */
@@ -27,6 +29,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
+  const [azurePat, setAzurePat] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -37,12 +40,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           const profile = await getUserProfile(nextUser.uid);
           setApiKeys(profile?.apiKeys ?? {});
+          setAzurePat(profile?.azurePat);
         } catch {
           // Falha ao ler o perfil não deve travar a UI; tratamos como "sem chave".
           setApiKeys({});
+          setAzurePat(undefined);
         }
       } else {
         setApiKeys({});
+        setAzurePat(undefined);
       }
 
       setLoading(false);
@@ -55,11 +61,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!user) return;
     const profile = await getUserProfile(user.uid);
     setApiKeys(profile?.apiKeys ?? {});
+    setAzurePat(profile?.azurePat);
   };
 
   const value: AuthContextValue = {
     user,
     apiKeys,
+    azurePat,
     hasApiKey: Object.keys(apiKeys).length > 0,
     loading,
     refreshKeys,

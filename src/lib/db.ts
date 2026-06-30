@@ -77,7 +77,19 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
     displayName: typeof data.displayName === 'string' ? data.displayName : '',
     apiKey: typeof data.apiKey === 'string' ? data.apiKey : undefined,
     apiKeys,
+    azurePat: typeof data.azurePat === 'string' ? data.azurePat : undefined,
   };
+}
+
+/** Salva/atualiza o PAT do Azure DevOps do usuário (merge para não apagar o resto). */
+export async function updateAzurePat(uid: string, pat: string): Promise<void> {
+  const ref = doc(db, 'users', uid);
+  await setDoc(ref, { azurePat: pat, updatedAt: serverTimestamp() }, { merge: true });
+}
+
+/** Remove o PAT do Azure DevOps do perfil do usuário. */
+export async function removeAzurePat(uid: string): Promise<void> {
+  await updateDoc(doc(db, 'users', uid), { azurePat: deleteField() });
 }
 
 /**

@@ -3,13 +3,22 @@ import { Link } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import type { TestCase } from '../types';
 import { useAuth } from '../context/AuthContext';
-import { useGenerator, timerElapsed } from '../context/GeneratorContext';
+import { useGenerator } from '../context/GeneratorContext';
 import { getUserProfile, createSavedCase } from '../lib/db';
 import { generateTestCases, TestCaseGenError } from '../lib/ai';
 import { PROVIDERS, PROVIDER_MAP, type ProviderId } from '../lib/providers';
 import { TIPO_OPTIONS, tipoLabel, tipoBadge } from '../lib/testCaseOptions';
 import TestCaseModal, { type TestCaseModalResult } from './TestCaseModal';
-import type { SavedCaseStatus } from '../types';
+
+/** Caso em branco usado ao adicionar um caso manualmente. */
+const BLANK_CASE: TestCase = {
+  tipo: 'positivo',
+  titulo: '',
+  descricao: '',
+  passos: [],
+  resultado_esperado: '',
+  ca_coberto: '',
+};
 
 interface GenError {
   message: string;
@@ -37,21 +46,17 @@ export default function TestCaseGenerator() {
     setModel,
     cases,
     setCases,
+    addCase,
     updateCase,
     removeCase,
-    statuses,
-    setStatus,
-    timers,
-    startTimer,
-    stopTimer,
-    resetTimer,
   } = useGenerator();
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<GenError | null>(null);
   const [copied, setCopied] = useState(false);
-  // Edição de caso gerado + salvamento do conjunto no repositório.
+  // Edição de caso gerado + adição manual + salvamento do conjunto no repositório.
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [adding, setAdding] = useState(false);
   const [savingAll, setSavingAll] = useState(false);
   const [savedAll, setSavedAll] = useState(false);
 
@@ -75,27 +80,6 @@ export default function TestCaseGenerator() {
       setModel(def.models[0].id);
     }
   }, [configured, provider, model, setProvider, setModel]);
-
-  // Resumo dos status dos casos gerados.
-  const passedCount = Object.values(statuses).filter((s) => s === 'pass').length;
-  const failedCount = Object.values(statuses).filter((s) => s === 'fail').length;
-  const pendingCount = cases ? cases.length - passedCount - failedCount : 0;
-
-  // Atualiza o tempo exibido enquanto algum cronômetro estiver em andamento.
-  const [now, setNow] = useState(() => Date.now());
-  const anyRunning = useMemo(
-    () => Object.values(timers).some((t) => t.startedAt !== null),
-    [timers],
-  );
-  useEffect(() => {
-    if (!anyRunning) return;
-    const id = window.setInterval(() => setNow(Date.now()), 250);
-    return () => window.clearInterval(id);
-  }, [anyRunning]);
-
-  const totalMs = cases
-    ? cases.reduce((sum, _tc, i) => sum + timerElapsed(timers[i], now), 0)
-    : 0;
 
   const handleGenerate = async (): Promise<void> => {
     setError(null);
@@ -195,22 +179,19 @@ export default function TestCaseGenerator() {
     try {
       const createdByName = user.displayName?.trim() || user.email || 'QA';
       await Promise.all(
-        cases.map((tc, idx) => {
-          const st = statuses[idx];
-          const status: SavedCaseStatus =
-            st === 'pass' ? 'pass' : st === 'fail' ? 'fail' : 'pendente';
-          return createSavedCase({
+        cases.map((tc) =>
+          createSavedCase({
             id: uuidv4(),
             ...tc,
             grupo: titulo.trim(),
             sprint: '',
             modulo: '',
-            status,
-            tempoMs: timerElapsed(timers[idx], Date.now()),
+            status: 'pendente',
+            tempoMs: 0,
             createdBy: user.uid,
             createdByName,
-          });
-        }),
+          }),
+        ),
       );
       setSavedAll(true);
     } catch {
@@ -229,6 +210,17 @@ export default function TestCaseGenerator() {
     void _st;
     updateCase(editingIdx, core);
     setEditingIdx(null);
+  };
+
+  // Adiciona um caso criado manualmente ao final da lista.
+  const handleAddSave = (result: TestCaseModalResult): void => {
+    const { sprint: _s, modulo: _m, status: _st, ...core } = result;
+    void _s;
+    void _m;
+    void _st;
+    addCase(core);
+    setAdding(false);
+    setSavedAll(false);
   };
 
   return (
@@ -468,20 +460,18 @@ export default function TestCaseGenerator() {
                 {cases.length === 1 ? '' : 's'}
               </h2>
               <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
-                <span className="font-medium text-selbetti-green dark:text-green-400">
-                  {passedCount} passaram
-                </span>{' '}
-                ·{' '}
-                <span className="font-medium text-red-600 dark:text-red-400">
-                  {failedCount} falharam
-                </span>{' '}
-                · {pendingCount} pendente{pendingCount === 1 ? '' : 's'}
-                <span className="ml-2 text-gray-400 dark:text-gray-500">
-                  · {formatTime(totalMs)} no total
-                </span>
+                Revise, edite ou adicione casos e salve no repositório. A
+                execução (cronômetro e Passou/Falhou) fica na aba Execução.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setAdding(true)}
+                className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700"
+              >
+                + Adicionar caso
+              </button>
               <button
                 type="button"
                 onClick={handleCopy}
@@ -515,13 +505,7 @@ export default function TestCaseGenerator() {
             {cases.map((tc, idx) => (
               <article
                 key={idx}
-                className={`rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800 ${
-                  statuses[idx] === 'pass'
-                    ? 'border-l-4 border-l-selbetti-green'
-                    : statuses[idx] === 'fail'
-                      ? 'border-l-4 border-l-red-500'
-                      : ''
-                }`}
+                className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800"
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <span
@@ -597,73 +581,7 @@ export default function TestCaseGenerator() {
                   </div>
                 </div>
 
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-3 dark:border-gray-700">
-                  {/* Cronômetro do teste */}
-                  <div className="flex items-center gap-2">
-                    <span className="min-w-[3.5rem] font-mono text-sm tabular-nums text-gray-700 dark:text-gray-200">
-                      {formatTime(timerElapsed(timers[idx], now))}
-                    </span>
-                    {timers[idx]?.startedAt != null ? (
-                      <button
-                        type="button"
-                        onClick={() => stopTimer(idx)}
-                        className="rounded-md border border-selbetti-orange bg-selbetti-orange/10 px-3 py-1 text-xs font-semibold text-selbetti-orange transition-colors hover:bg-selbetti-orange/20"
-                      >
-                        ⏸ Parar
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => startTimer(idx)}
-                        className="rounded-md border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
-                      >
-                        ▶ Iniciar
-                      </button>
-                    )}
-                    {timerElapsed(timers[idx], now) > 0 &&
-                      timers[idx]?.startedAt == null && (
-                        <button
-                          type="button"
-                          onClick={() => resetTimer(idx)}
-                          className="text-xs font-medium text-gray-400 underline transition-colors hover:text-gray-600 dark:hover:text-gray-300"
-                        >
-                          Zerar
-                        </button>
-                      )}
-                  </div>
-
-                  {/* Resultado do teste */}
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setStatus(idx, statuses[idx] === 'pass' ? null : 'pass')
-                      }
-                      className={`rounded-md border px-3 py-1 text-xs font-semibold transition-colors ${
-                        statuses[idx] === 'pass'
-                          ? 'border-selbetti-green bg-selbetti-green text-white'
-                          : 'border-gray-300 text-selbetti-green hover:bg-selbetti-green/10 dark:border-gray-600 dark:text-green-400'
-                      }`}
-                    >
-                      ✓ Passou
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setStatus(idx, statuses[idx] === 'fail' ? null : 'fail')
-                      }
-                      className={`rounded-md border px-3 py-1 text-xs font-semibold transition-colors ${
-                        statuses[idx] === 'fail'
-                          ? 'border-red-500 bg-red-500 text-white'
-                          : 'border-gray-300 text-red-600 hover:bg-red-50 dark:border-gray-600 dark:text-red-400 dark:hover:bg-red-500/10'
-                      }`}
-                    >
-                      ✗ Falhou
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mt-3 flex items-center justify-end gap-2">
+                <div className="mt-4 flex items-center justify-end gap-2 border-t border-gray-100 pt-3 dark:border-gray-700">
                   <button
                     type="button"
                     onClick={() => setEditingIdx(idx)}
@@ -694,21 +612,21 @@ export default function TestCaseGenerator() {
           onSave={handleEditSave}
         />
       )}
+
+      {adding && (
+        <TestCaseModal
+          value={BLANK_CASE}
+          withMeta={false}
+          title="Adicionar caso"
+          onClose={() => setAdding(false)}
+          onSave={handleAddSave}
+        />
+      )}
     </div>
   );
 }
 
 /* ----------------------------- Helpers ---------------------------- */
-
-/** Formata milissegundos como mm:ss (ou h:mm:ss acima de 1h). */
-function formatTime(ms: number): string {
-  const totalSec = Math.floor(ms / 1000);
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
-}
 
 /** Para exploratórios usa o charter; para os demais, os passos numerados. */
 function charterOrSteps(tc: TestCase): string {

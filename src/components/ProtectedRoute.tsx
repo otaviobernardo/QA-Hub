@@ -5,8 +5,8 @@ import Header from './Header';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', end: true },
-  { to: '/gerador', label: 'Gerador de testes', end: false },
-  { to: '/casos', label: 'Casos de teste', end: false },
+  { to: '/testes', label: 'Testes', end: false },
+  { to: '/bugs', label: 'Bugs', end: false },
   { to: '/base', label: 'Base de conhecimento', end: false },
 ];
 

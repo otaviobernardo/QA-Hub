@@ -52,6 +52,7 @@ export interface UserProfile {
   displayName: string;
   apiKey?: string;             // legado: chave Anthropic única (mantido por compat.)
   apiKeys?: Record<string, string>; // chaves por provedor de IA (anthropic, openai, gemini, ...)
+  azurePat?: string;           // Personal Access Token do Azure DevOps (Work Items R/W)
 }
 
 export type SavedCaseStatus = 'pendente' | 'pass' | 'fail';
