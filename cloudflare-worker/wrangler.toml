@@ -1,0 +1,7 @@
+name = "qa-hub-ado-proxy"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# Origens que podem chamar o proxy. Ajuste para o seu domínio da Vercel.
+[vars]
+ALLOWED_ORIGINS = "http://localhost:5173,https://qa-hub.vercel.app"

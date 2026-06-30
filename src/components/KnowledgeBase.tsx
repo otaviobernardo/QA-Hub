@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import TeamKnowledge from './TeamKnowledge';
 
 type CatKey = 'tipos' | 'conceitos' | 'praticas' | 'metodologias';
 
@@ -300,7 +301,10 @@ const ARTICLES: Article[] = [
 
 const ALL = 'todos';
 
+type Mode = 'conceitos' | 'time';
+
 export default function KnowledgeBase() {
+  const [mode, setMode] = useState<Mode>('conceitos');
   const [cat, setCat] = useState<CatKey | typeof ALL>(ALL);
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -333,11 +337,38 @@ export default function KnowledgeBase() {
           Base de conhecimento
         </h1>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Referência rápida sobre tipos de teste, conceitos, boas práticas e
-          metodologias de QA.
+          Conceitos de QA e o conhecimento operacional do time (como testar,
+          configurar, etc.).
         </p>
       </div>
 
+      {/* Seletor de modo */}
+      <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
+        {(
+          [
+            ['conceitos', 'Conceitos de QA'],
+            ['time', 'Conhecimento do time'],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setMode(value)}
+            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+              mode === value
+                ? 'border-selbetti-green text-selbetti-green'
+                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {mode === 'time' ? (
+        <TeamKnowledge />
+      ) : (
+        <>
       {/* Busca + categorias */}
       <div className="space-y-3">
         <input
@@ -428,6 +459,8 @@ export default function KnowledgeBase() {
             );
           })}
         </div>
+      )}
+        </>
       )}
     </div>
   );

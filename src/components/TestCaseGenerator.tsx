@@ -1,68 +1,30 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { v4 as uuidv4 } from 'uuid';
 import type { TestCase } from '../types';
 import { useAuth } from '../context/AuthContext';
-import { useGenerator, timerElapsed } from '../context/GeneratorContext';
-import { getUserProfile } from '../lib/db';
+import { useGenerator } from '../context/GeneratorContext';
+import { getUserProfile, createSavedCase } from '../lib/db';
 import { generateTestCases, TestCaseGenError } from '../lib/ai';
 import { PROVIDERS, PROVIDER_MAP, type ProviderId } from '../lib/providers';
+import { TIPO_OPTIONS, tipoLabel, tipoBadge } from '../lib/testCaseOptions';
+import {
+  importFromCard,
+  findMapaDeTestes,
+  writeMapaDeTestes,
+  htmlToText,
+} from '../lib/cardImport';
+import { AzureError } from '../lib/azure';
+import TestCaseModal, { type TestCaseModalResult } from './TestCaseModal';
 
-type Tipo = TestCase['tipo'];
-
-const TIPO_OPTIONS: { value: Tipo; label: string }[] = [
-  { value: 'positivo', label: 'Positivo' },
-  { value: 'negativo', label: 'Negativo' },
-  { value: 'edge', label: 'Edge case' },
-  { value: 'regressao', label: 'Regressão' },
-  { value: 'integracao', label: 'Integração' },
-  { value: 'api', label: 'API' },
-  { value: 'exploratorio', label: 'Exploratório' },
-  { value: 'aceitacao', label: 'Aceitação (UAT)' },
-  { value: 'smoke', label: 'Smoke' },
-  { value: 'seguranca', label: 'Segurança' },
-  { value: 'usabilidade', label: 'Usabilidade' },
-  { value: 'compatibilidade', label: 'Compatibilidade' },
-  { value: 'acessibilidade', label: 'Acessibilidade' },
-  { value: 'performance', label: 'Performance' },
-];
-
-const tipoBadge: Record<Tipo, string> = {
-  positivo: 'bg-selbetti-green/15 text-selbetti-green',
-  negativo: 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300',
-  edge: 'bg-selbetti-orange/15 text-selbetti-orange',
-  regressao: 'bg-selbetti-purple/15 text-selbetti-purple',
-  acessibilidade: 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300',
-  performance:
-    'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
-  seguranca: 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300',
-  usabilidade: 'bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300',
-  integracao:
-    'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300',
-  compatibilidade:
-    'bg-cyan-100 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300',
-  aceitacao:
-    'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300',
-  smoke: 'bg-slate-100 text-slate-700 dark:bg-slate-600/30 dark:text-slate-300',
-  api: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300',
-  exploratorio:
-    'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-500/15 dark:text-fuchsia-300',
-};
-
-const tipoLabel: Record<Tipo, string> = {
-  positivo: 'Positivo',
-  negativo: 'Negativo',
-  edge: 'Edge case',
-  regressao: 'Regressão',
-  acessibilidade: 'Acessibilidade',
-  performance: 'Performance',
-  seguranca: 'Segurança',
-  usabilidade: 'Usabilidade',
-  integracao: 'Integração',
-  compatibilidade: 'Compatibilidade',
-  aceitacao: 'Aceitação (UAT)',
-  smoke: 'Smoke',
-  api: 'API',
-  exploratorio: 'Exploratório',
+/** Caso em branco usado ao adicionar um caso manualmente. */
+const BLANK_CASE: TestCase = {
+  tipo: 'positivo',
+  titulo: '',
+  descricao: '',
+  passos: [],
+  resultado_esperado: '',
+  ca_coberto: '',
 };
 
 interface GenError {
@@ -73,6 +35,8 @@ interface GenError {
 export default function TestCaseGenerator() {
   const { user, apiKeys } = useAuth();
   const {
+    titulo,
+    setTitulo,
     userStory,
     setUserStory,
     criteria,
@@ -81,23 +45,38 @@ export default function TestCaseGenerator() {
     setDevAnalysis,
     tipos,
     toggleTipo,
+    casosPorTipo,
+    setCasosPorTipo,
     provider,
     setProvider,
     model,
     setModel,
     cases,
     setCases,
-    statuses,
-    setStatus,
-    timers,
-    startTimer,
-    stopTimer,
-    resetTimer,
+    addCase,
+    updateCase,
+    removeCase,
   } = useGenerator();
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<GenError | null>(null);
   const [copied, setCopied] = useState(false);
+  // Edição de caso gerado + adição manual + salvamento do conjunto no repositório.
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [savingAll, setSavingAll] = useState(false);
+  const [savedAll, setSavedAll] = useState(false);
+  // Importação dos campos a partir de um card do Azure DevOps.
+  const [cardId, setCardId] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState<
+    { type: 'ok' | 'error'; text: string } | null
+  >(null);
+  // Resultado da cópia dos casos para a task "Mapa de testes".
+  const [mapaMsg, setMapaMsg] = useState<
+    { type: 'ok' | 'error'; text: string } | null
+  >(null);
+  const [mapaPushing, setMapaPushing] = useState(false);
 
   // Provedores que o QA já configurou (na ordem do registro).
   const configured = useMemo(
@@ -120,31 +99,70 @@ export default function TestCaseGenerator() {
     }
   }, [configured, provider, model, setProvider, setModel]);
 
-  // Resumo dos status dos casos gerados.
-  const passedCount = Object.values(statuses).filter((s) => s === 'pass').length;
-  const failedCount = Object.values(statuses).filter((s) => s === 'fail').length;
-  const pendingCount = cases ? cases.length - passedCount - failedCount : 0;
+  const handleImport = async (): Promise<void> => {
+    setImportMsg(null);
+    const raw = cardId.trim();
+    if (!raw) {
+      setImportMsg({ type: 'error', text: 'Informe o ID do card (PBI).' });
+      return;
+    }
+    if (!/^\d+$/.test(raw)) {
+      setImportMsg({ type: 'error', text: 'O ID do card deve ser numérico.' });
+      return;
+    }
+    if (!user) return;
+    // Evita apagar conteúdo já digitado sem aviso.
+    if (
+      (userStory.trim() || criteria.trim() || devAnalysis.trim()) &&
+      !window.confirm(
+        'Isso vai substituir a User Story, os Critérios de Aceite e a Análise do Dev já preenchidos. Continuar?',
+      )
+    ) {
+      return;
+    }
 
-  // Atualiza o tempo exibido enquanto algum cronômetro estiver em andamento.
-  const [now, setNow] = useState(() => Date.now());
-  const anyRunning = useMemo(
-    () => Object.values(timers).some((t) => t.startedAt !== null),
-    [timers],
-  );
-  useEffect(() => {
-    if (!anyRunning) return;
-    const id = window.setInterval(() => setNow(Date.now()), 250);
-    return () => window.clearInterval(id);
-  }, [anyRunning]);
-
-  const totalMs = cases
-    ? cases.reduce((sum, _tc, i) => sum + timerElapsed(timers[i], now), 0)
-    : 0;
+    setImporting(true);
+    try {
+      const profile = await getUserProfile(user.uid);
+      const pat = profile?.azurePat?.trim();
+      if (!pat) {
+        setImportMsg({
+          type: 'error',
+          text: 'Configure seu PAT do Azure DevOps em Configurações.',
+        });
+        return;
+      }
+      const data = await importFromCard(pat, raw);
+      setUserStory(data.userStory);
+      setCriteria(data.criteria);
+      if (data.devAnalysis) setDevAnalysis(data.devAnalysis);
+      setImportMsg({
+        type: 'ok',
+        text: data.foundAnalise
+          ? 'User Story, Critérios de Aceite e Análise do Dev importados do card.'
+          : 'User Story e Critérios de Aceite importados. Análise do Dev não encontrada (task filha "Análise") — preencha manualmente se precisar.',
+      });
+    } catch (err) {
+      setImportMsg({
+        type: 'error',
+        text:
+          err instanceof AzureError
+            ? err.message
+            : 'Falha ao buscar o card no Azure DevOps.',
+      });
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const handleGenerate = async (): Promise<void> => {
     setError(null);
 
     if (!user) return;
+    if (!titulo.trim()) {
+      setError({ message: 'Informe um título para o conjunto de casos.' });
+      return;
+    }
     if (!userStory.trim() || !criteria.trim()) {
       setError({ message: 'Preencha a User Story e os Critérios de Aceite.' });
       return;
@@ -187,8 +205,15 @@ export default function TestCaseGenerator() {
         acceptanceCriteria: criteria.trim(),
         devAnalysis: devAnalysis.trim(),
         tipos: [...tipos],
+        casosPorTipo,
       });
-      setCases(result);
+      // Ordena pela ordem de exibição dos tipos (TIPO_OPTIONS).
+      const order = new Map(TIPO_OPTIONS.map((o, i) => [o.value, i]));
+      const sorted = [...result].sort(
+        (a, b) => (order.get(a.tipo) ?? 99) - (order.get(b.tipo) ?? 99),
+      );
+      setCases(sorted);
+      setSavedAll(false);
     } catch (err) {
       if (err instanceof TestCaseGenError) {
         setError({ message: err.message });
@@ -217,6 +242,151 @@ export default function TestCaseGenerator() {
     if (cases) exportCasesCsv(cases);
   };
 
+  // Salva TODOS os casos gerados no repositório, sob o título (grupo) informado.
+  const saveAll = async (): Promise<void> => {
+    if (!user || !cases || cases.length === 0) return;
+    if (!titulo.trim()) {
+      setError({ message: 'Informe um título para salvar os casos.' });
+      return;
+    }
+    setSavingAll(true);
+    setMapaMsg(null);
+    try {
+      const createdByName = user.displayName?.trim() || user.email || 'QA';
+      await Promise.all(
+        cases.map((tc) =>
+          createSavedCase({
+            id: uuidv4(),
+            ...tc,
+            grupo: titulo.trim(),
+            sprint: '',
+            modulo: '',
+            status: 'pendente',
+            tempoMs: 0,
+            createdBy: user.uid,
+            createdByName,
+          }),
+        ),
+      );
+      setSavedAll(true);
+    } catch {
+      window.alert('Não foi possível salvar os casos no repositório.');
+      setSavingAll(false);
+      return;
+    }
+
+    // Cola os casos na task "Mapa de testes" do card, se houver card vinculado.
+    if (cardId.trim()) {
+      await runMapaPush();
+    }
+    setSavingAll(false);
+  };
+
+  // Cola os casos na task "Mapa de testes"; pergunta antes de sobrescrever conteúdo.
+  // Reutilizável: chamado no salvar e no botão "tentar de novo".
+  const runMapaPush = async (): Promise<void> => {
+    if (!user || !cases || cases.length === 0 || !cardId.trim()) return;
+    setMapaMsg(null);
+    setMapaPushing(true);
+    try {
+      const profile = await getUserProfile(user.uid);
+      const pat = profile?.azurePat?.trim();
+      if (!pat) {
+        setMapaMsg({
+          type: 'error',
+          text: 'Para colar no "Mapa de testes", configure seu PAT do Azure em Configurações.',
+        });
+        return;
+      }
+      const mapa = await findMapaDeTestes(pat, cardId.trim());
+      if (!mapa) {
+        setMapaMsg({
+          type: 'error',
+          text: 'A task "Mapa de testes" não foi encontrada no card.',
+        });
+        return;
+      }
+      // Se já houver conteúdo, confirma antes de sobrescrever.
+      if (
+        htmlToText(mapa.currentHtml).trim().length > 0 &&
+        !window.confirm(
+          'A task "Mapa de testes" já tem conteúdo. Substituir pelos casos atuais?',
+        )
+      ) {
+        setMapaMsg({
+          type: 'error',
+          text: 'Colagem cancelada — a task "Mapa de testes" já tinha conteúdo.',
+        });
+        return;
+      }
+      await writeMapaDeTestes(pat, mapa.id, casesToHtml(cases));
+      setMapaMsg({
+        type: 'ok',
+        text: 'Casos colados na task "Mapa de testes" do card.',
+      });
+    } catch (err) {
+      setMapaMsg({
+        type: 'error',
+        text:
+          err instanceof AzureError
+            ? err.message
+            : 'Falhou ao colar no "Mapa de testes".',
+      });
+    } finally {
+      setMapaPushing(false);
+    }
+  };
+
+  // Salva a edição inline de um caso gerado (apenas os campos do caso).
+  const handleEditSave = (result: TestCaseModalResult): void => {
+    if (editingIdx === null) return;
+    const { sprint: _s, modulo: _m, status: _st, ...core } = result;
+    void _s;
+    void _m;
+    void _st;
+    updateCase(editingIdx, core);
+    setEditingIdx(null);
+  };
+
+  // Adiciona um caso criado manualmente ao final da lista.
+  const handleAddSave = (result: TestCaseModalResult): void => {
+    const { sprint: _s, modulo: _m, status: _st, ...core } = result;
+    void _s;
+    void _m;
+    void _st;
+    addCase(core);
+    setAdding(false);
+    setSavedAll(false);
+  };
+
+  // Limpa os casos gerados e os campos de entrada (US, CA, Análise, card).
+  const handleClear = (): void => {
+    if (
+      !window.confirm(
+        'Limpar o título, a User Story, Critérios de Aceite, Análise do Dev e os casos gerados?',
+      )
+    )
+      return;
+    setTitulo('');
+    setUserStory('');
+    setCriteria('');
+    setDevAnalysis('');
+    setCases(null);
+    setCardId('');
+    setError(null);
+    setImportMsg(null);
+    setMapaMsg(null);
+    setSavedAll(false);
+  };
+
+  const hasContent =
+    Boolean(cases && cases.length > 0) ||
+    Boolean(titulo.trim()) ||
+    Boolean(userStory.trim()) ||
+    Boolean(criteria.trim()) ||
+    Boolean(devAnalysis.trim()) ||
+    Boolean(cardId.trim());
+
   return (
     <div className="space-y-6">
       <div>
@@ -231,6 +401,80 @@ export default function TestCaseGenerator() {
 
       {/* Entrada */}
       <div className="space-y-4 rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 p-6">
+        <div>
+          <label
+            htmlFor="titulo"
+            className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
+          >
+            Título
+          </label>
+          <input
+            id="titulo"
+            type="text"
+            value={titulo}
+            onChange={(e) => setTitulo(e.target.value)}
+            placeholder="Ex: Recuperação de senha por e-mail"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-selbetti-green focus:ring-2 focus:ring-selbetti-green/30 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500"
+          />
+          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+            Os casos salvos ficam agrupados sob este título no repositório.
+          </p>
+        </div>
+
+        {/* Importar campos a partir de um card do Azure DevOps */}
+        <div className="rounded-md border border-selbetti-purple/30 bg-selbetti-purple/5 p-4">
+          <label
+            htmlFor="cardId"
+            className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
+          >
+            Importar do Azure DevOps
+          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              id="cardId"
+              type="text"
+              inputMode="numeric"
+              value={cardId}
+              onChange={(e) => setCardId(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void handleImport();
+                }
+              }}
+              placeholder="ID do PBI (ex: 151171)"
+              className="w-44 rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-selbetti-green focus:ring-2 focus:ring-selbetti-green/30 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500"
+            />
+            <button
+              type="button"
+              onClick={() => void handleImport()}
+              disabled={importing}
+              className="flex items-center gap-2 rounded-md bg-selbetti-purple px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-selbetti-purple/90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {importing && (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+              )}
+              {importing ? 'Buscando…' : 'Buscar do Azure'}
+            </button>
+          </div>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Puxa a <b>User Story</b> e os <b>Critérios de Aceite</b> do card e a{' '}
+            <b>Análise do Dev</b> da task filha “Análise”.
+          </p>
+          {importMsg && (
+            <div
+              role="alert"
+              className={`mt-2 rounded-md px-3 py-2 text-sm ${
+                importMsg.type === 'ok'
+                  ? 'bg-selbetti-green/10 text-selbetti-green dark:text-green-300'
+                  : 'border border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300'
+              }`}
+            >
+              {importMsg.text}
+            </div>
+          )}
+        </div>
+
         <div>
           <label
             htmlFor="userStory"
@@ -339,9 +583,35 @@ export default function TestCaseGenerator() {
           </div>
         )}
 
+        <div className="flex items-end justify-between gap-3">
+          <label
+            htmlFor="casosPorTipo"
+            className="text-sm font-medium text-gray-700 dark:text-gray-200"
+          >
+            Casos por tipo
+          </label>
+          <select
+            id="casosPorTipo"
+            value={casosPorTipo}
+            onChange={(e) => setCasosPorTipo(Number(e.target.value))}
+            className="app-select rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-selbetti-green focus:ring-2 focus:ring-selbetti-green/30 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+          >
+            <option value={2}>2 por tipo</option>
+            <option value={3}>3 por tipo</option>
+            <option value={5}>5 por tipo</option>
+            <option value={8}>8 por tipo</option>
+          </select>
+        </div>
+
         <fieldset>
           <legend className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-200">
-            Tipos de teste
+            Tipos de teste{' '}
+            <span className="font-normal text-gray-400 dark:text-gray-500">
+              ({tipos.length === 0
+                ? 'nenhum'
+                : `~${casosPorTipo * tipos.length} casos no total`}
+              )
+            </span>
           </legend>
           <div className="flex flex-wrap gap-2">
             {TIPO_OPTIONS.map((opt) => {
@@ -385,17 +655,27 @@ export default function TestCaseGenerator() {
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={handleGenerate}
-          disabled={loading || configured.length === 0}
-          className="flex items-center justify-center gap-2 rounded-md bg-selbetti-green px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-selbetti-green/90 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {loading && (
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-          )}
-          {loading ? 'Gerando…' : 'Gerar casos de teste'}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleGenerate}
+            disabled={loading || configured.length === 0}
+            className="flex items-center justify-center gap-2 rounded-md bg-selbetti-green px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-selbetti-green/90 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loading && (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+            )}
+            {loading ? 'Gerando…' : 'Gerar casos de teste'}
+          </button>
+          <button
+            type="button"
+            onClick={handleClear}
+            disabled={loading || !hasContent}
+            className="rounded-md border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-red-500/10 dark:hover:text-red-400"
+          >
+            Limpar
+          </button>
+        </div>
       </div>
 
       {/* Resultado */}
@@ -408,20 +688,18 @@ export default function TestCaseGenerator() {
                 {cases.length === 1 ? '' : 's'}
               </h2>
               <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
-                <span className="font-medium text-selbetti-green">
-                  {passedCount} passaram
-                </span>{' '}
-                ·{' '}
-                <span className="font-medium text-red-600 dark:text-red-400">
-                  {failedCount} falharam
-                </span>{' '}
-                · {pendingCount} pendente{pendingCount === 1 ? '' : 's'}
-                <span className="ml-2 text-gray-400 dark:text-gray-500">
-                  · ⏱ {formatTime(totalMs)} no total
-                </span>
+                Revise, edite ou adicione casos e salve no repositório. A
+                execução (cronômetro e Passou/Falhou) fica na aba Execução.
               </p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setAdding(true)}
+                className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700"
+              >
+                + Adicionar caso
+              </button>
               <button
                 type="button"
                 onClick={handleCopy}
@@ -436,20 +714,49 @@ export default function TestCaseGenerator() {
               >
                 Exportar CSV
               </button>
+              <button
+                type="button"
+                onClick={() => void saveAll()}
+                disabled={savingAll || savedAll}
+                className="rounded-md bg-selbetti-green px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-selbetti-green/90 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {savedAll
+                  ? 'Salvo ✓'
+                  : savingAll
+                    ? 'Salvando…'
+                    : 'Salvar no Repositório'}
+              </button>
             </div>
           </div>
+
+          {mapaMsg && (
+            <div
+              role="status"
+              className={`flex flex-wrap items-center justify-between gap-2 rounded-md px-3 py-2 text-sm ${
+                mapaMsg.type === 'ok'
+                  ? 'bg-selbetti-green/10 text-selbetti-green dark:text-green-300'
+                  : 'border border-selbetti-orange/40 bg-selbetti-orange/10 text-gray-700 dark:text-gray-200'
+              }`}
+            >
+              <span>{mapaMsg.text}</span>
+              {mapaMsg.type === 'error' && cardId.trim() && (
+                <button
+                  type="button"
+                  onClick={() => void runMapaPush()}
+                  disabled={mapaPushing}
+                  className="shrink-0 rounded-md border border-selbetti-orange px-3 py-1 text-xs font-semibold text-selbetti-orange transition-colors hover:bg-selbetti-orange/20 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {mapaPushing ? 'Colando…' : 'Tentar colar no Mapa de testes'}
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="space-y-3">
             {cases.map((tc, idx) => (
               <article
                 key={idx}
-                className={`rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800 ${
-                  statuses[idx] === 'pass'
-                    ? 'border-l-4 border-l-selbetti-green'
-                    : statuses[idx] === 'fail'
-                      ? 'border-l-4 border-l-red-500'
-                      : ''
-                }`}
+                className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800"
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <span
@@ -525,91 +832,52 @@ export default function TestCaseGenerator() {
                   </div>
                 </div>
 
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-3 dark:border-gray-700">
-                  {/* Cronômetro do teste */}
-                  <div className="flex items-center gap-2">
-                    <span className="min-w-[3.5rem] font-mono text-sm tabular-nums text-gray-700 dark:text-gray-200">
-                      {formatTime(timerElapsed(timers[idx], now))}
-                    </span>
-                    {timers[idx]?.startedAt != null ? (
-                      <button
-                        type="button"
-                        onClick={() => stopTimer(idx)}
-                        className="rounded-md border border-selbetti-orange bg-selbetti-orange/10 px-3 py-1 text-xs font-semibold text-selbetti-orange transition-colors hover:bg-selbetti-orange/20"
-                      >
-                        ⏸ Parar
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => startTimer(idx)}
-                        className="rounded-md border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
-                      >
-                        ▶ Iniciar
-                      </button>
-                    )}
-                    {timerElapsed(timers[idx], now) > 0 &&
-                      timers[idx]?.startedAt == null && (
-                        <button
-                          type="button"
-                          onClick={() => resetTimer(idx)}
-                          className="text-xs font-medium text-gray-400 underline transition-colors hover:text-gray-600 dark:hover:text-gray-300"
-                        >
-                          Zerar
-                        </button>
-                      )}
-                  </div>
-
-                  {/* Resultado do teste */}
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setStatus(idx, statuses[idx] === 'pass' ? null : 'pass')
-                      }
-                      className={`rounded-md border px-3 py-1 text-xs font-semibold transition-colors ${
-                        statuses[idx] === 'pass'
-                          ? 'border-selbetti-green bg-selbetti-green text-white'
-                          : 'border-gray-300 text-selbetti-green hover:bg-selbetti-green/10 dark:border-gray-600'
-                      }`}
-                    >
-                      ✓ Passou
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setStatus(idx, statuses[idx] === 'fail' ? null : 'fail')
-                      }
-                      className={`rounded-md border px-3 py-1 text-xs font-semibold transition-colors ${
-                        statuses[idx] === 'fail'
-                          ? 'border-red-500 bg-red-500 text-white'
-                          : 'border-gray-300 text-red-600 hover:bg-red-50 dark:border-gray-600 dark:text-red-400 dark:hover:bg-red-500/10'
-                      }`}
-                    >
-                      ✗ Falhou
-                    </button>
-                  </div>
+                <div className="mt-4 flex items-center justify-end gap-2 border-t border-gray-100 pt-3 dark:border-gray-700">
+                  <button
+                    type="button"
+                    onClick={() => setEditingIdx(idx)}
+                    className="rounded-md border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeCase(idx)}
+                    className="rounded-md border border-gray-300 px-3 py-1 text-xs font-medium text-gray-500 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-600 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-red-500/10 dark:hover:text-red-400"
+                  >
+                    Excluir
+                  </button>
                 </div>
               </article>
             ))}
           </div>
         </div>
       )}
+
+      {editingIdx !== null && cases && (
+        <TestCaseModal
+          value={cases[editingIdx]}
+          withMeta={false}
+          title="Editar caso gerado"
+          onClose={() => setEditingIdx(null)}
+          onSave={handleEditSave}
+        />
+      )}
+
+      {adding && (
+        <TestCaseModal
+          value={BLANK_CASE}
+          withMeta={false}
+          title="Adicionar caso"
+          onClose={() => setAdding(false)}
+          onSave={handleAddSave}
+        />
+      )}
     </div>
   );
 }
 
 /* ----------------------------- Helpers ---------------------------- */
-
-/** Formata milissegundos como mm:ss (ou h:mm:ss acima de 1h). */
-function formatTime(ms: number): string {
-  const totalSec = Math.floor(ms / 1000);
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
-}
 
 /** Para exploratórios usa o charter; para os demais, os passos numerados. */
 function charterOrSteps(tc: TestCase): string {
@@ -642,6 +910,45 @@ function casesToText(cases: TestCase[]): string {
         .join('\n');
     })
     .join('\n\n');
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/** Corpo HTML do caso: charter (exploratório) ou lista de passos. */
+function caseBodyHtml(tc: TestCase): string {
+  if (tc.tipo === 'exploratorio') {
+    return [
+      tc.explore && `<b>EXPLORE:</b> ${escapeHtml(tc.explore)}`,
+      tc.com && `<b>COM:</b> ${escapeHtml(tc.com)}`,
+      tc.para_validar && `<b>PARA VALIDAR:</b> ${escapeHtml(tc.para_validar)}`,
+      tc.e && `<b>E:</b> ${escapeHtml(tc.e)}`,
+    ]
+      .filter(Boolean)
+      .join('<br/>');
+  }
+  if (tc.passos.length === 0) return '';
+  return `<ol>${tc.passos.map((p) => `<li>${escapeHtml(p)}</li>`).join('')}</ol>`;
+}
+
+/** Renderiza os casos como HTML para colar na descrição do work item. */
+function casesToHtml(cases: TestCase[]): string {
+  return cases
+    .map((tc, idx) => {
+      const body = caseBodyHtml(tc);
+      const bodyLabel = tc.tipo === 'exploratorio' ? 'Charter' : 'Passos';
+      return [
+        `<b>Caso ${idx + 1} — [${tipoLabel[tc.tipo]}] ${escapeHtml(tc.titulo)}</b>`,
+        tc.descricao && escapeHtml(tc.descricao),
+        body && `<b>${bodyLabel}:</b><br/>${body}`,
+        `<b>Resultado esperado:</b> ${escapeHtml(tc.resultado_esperado || '—')}`,
+        `<b>CA/RN coberto:</b> ${escapeHtml(tc.ca_coberto || '—')}`,
+      ]
+        .filter(Boolean)
+        .join('<br/>');
+    })
+    .join('<br/><br/>');
 }
 
 function csvCell(value: string): string {

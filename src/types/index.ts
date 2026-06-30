@@ -15,12 +15,28 @@ export interface Bug {
   description: string;
   evidence: string;
   assignee: string;            // nome ou uid do QA responsável
+  vm?: string;                 // VM usada (somente quando environment === 'Homologação')
   createdBy: string;           // uid do usuário que criou
+  createdByName: string;       // nome de exibição do criador
   createdAt: Date;
   updatedAt: Date;
 }
 
 export type NoteVisibility = 'public' | 'private';
+
+export type TeamNoteCategory = 'modulo' | 'sistema' | 'processo' | 'outro';
+
+/** Conhecimento operacional compartilhado entre os QAs (como testar X, configurar Y). */
+export interface TeamNote {
+  id: string;
+  title: string;
+  category: TeamNoteCategory;
+  content: string;
+  createdBy: string;
+  createdByName: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 export interface SprintNote {
   id: string;
@@ -38,6 +54,23 @@ export interface UserProfile {
   displayName: string;
   apiKey?: string;             // legado: chave Anthropic única (mantido por compat.)
   apiKeys?: Record<string, string>; // chaves por provedor de IA (anthropic, openai, gemini, ...)
+  azurePat?: string;           // Personal Access Token do Azure DevOps (Work Items R/W)
+}
+
+export type SavedCaseStatus = 'pendente' | 'pass' | 'fail';
+
+/** Caso de teste salvo no repositório (com metadados de execução). */
+export interface SavedTestCase extends TestCase {
+  id: string;
+  grupo: string;               // título do conjunto sob o qual o caso foi salvo
+  sprint: string;
+  modulo: string;
+  status: SavedCaseStatus;
+  tempoMs: number;             // tempo de execução registrado (cronômetro)
+  createdBy: string;
+  createdByName: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface TestCase {

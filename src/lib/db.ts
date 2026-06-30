@@ -15,10 +15,21 @@ import {
 } from 'firebase/firestore';
 import type { ProviderId } from './providers';
 import { db } from './firebase';
-import type { Bug, SprintNote, UserProfile } from '../types';
+import type {
+  Bug,
+  SprintNote,
+  UserProfile,
+  TeamNote,
+  TeamNoteCategory,
+  SavedTestCase,
+  SavedCaseStatus,
+  TestCase,
+} from '../types';
 
 const BUGS = 'bugs';
 const SPRINT_NOTES = 'sprintNotes';
+const TEAM_NOTES = 'teamNotes';
+const TEST_CASES = 'testCases';
 
 /** Converte um valor do Firestore (Timestamp | Date | null) em Date. */
 function toDate(value: unknown): Date {
@@ -66,7 +77,19 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
     displayName: typeof data.displayName === 'string' ? data.displayName : '',
     apiKey: typeof data.apiKey === 'string' ? data.apiKey : undefined,
     apiKeys,
+    azurePat: typeof data.azurePat === 'string' ? data.azurePat : undefined,
   };
+}
+
+/** Salva/atualiza o PAT do Azure DevOps do usuário (merge para não apagar o resto). */
+export async function updateAzurePat(uid: string, pat: string): Promise<void> {
+  const ref = doc(db, 'users', uid);
+  await setDoc(ref, { azurePat: pat, updatedAt: serverTimestamp() }, { merge: true });
+}
+
+/** Remove o PAT do Azure DevOps do perfil do usuário. */
+export async function removeAzurePat(uid: string): Promise<void> {
+  await updateDoc(doc(db, 'users', uid), { azurePat: deleteField() });
 }
 
 /**
@@ -125,7 +148,9 @@ export async function getBugs(): Promise<Bug[]> {
       description: data.description ?? '',
       evidence: data.evidence ?? '',
       assignee: data.assignee ?? '',
+      vm: typeof data.vm === 'string' && data.vm ? data.vm : undefined,
       createdBy: data.createdBy ?? '',
+      createdByName: typeof data.createdByName === 'string' ? data.createdByName : '',
       createdAt: toDate(data.createdAt),
       updatedAt: toDate(data.updatedAt),
     };
@@ -224,4 +249,154 @@ export async function updateSprintNote(
 /** Remove uma observação de sprint. */
 export async function deleteSprintNote(id: string): Promise<void> {
   await deleteDoc(doc(db, SPRINT_NOTES, id));
+}
+
+/* ------------------------------------------------------------------ */
+/* Conhecimento do time (observações gerais)                          */
+/* ------------------------------------------------------------------ */
+
+export type NewTeamNote = Omit<TeamNote, 'createdAt' | 'updatedAt'>;
+export type TeamNoteUpdate = {
+  title?: string;
+  category?: TeamNoteCategory;
+  content?: string;
+};
+
+const CATEGORIES: TeamNoteCategory[] = [
+  'modulo',
+  'sistema',
+  'processo',
+  'outro',
+];
+
+/** Lista todas as notas de conhecimento do time, mais recentes primeiro. */
+export async function getTeamNotes(): Promise<TeamNote[]> {
+  const q = query(collection(db, TEAM_NOTES), orderBy('updatedAt', 'desc'));
+  const snapshot = await getDocs(q);
+
+  return snapshot.docs.map((d): TeamNote => {
+    const data = d.data();
+    const category = CATEGORIES.includes(data.category as TeamNoteCategory)
+      ? (data.category as TeamNoteCategory)
+      : 'outro';
+    return {
+      id: d.id,
+      title: typeof data.title === 'string' ? data.title : '',
+      category,
+      content: typeof data.content === 'string' ? data.content : '',
+      createdBy: typeof data.createdBy === 'string' ? data.createdBy : '',
+      createdByName:
+        typeof data.createdByName === 'string' ? data.createdByName : '',
+      createdAt: toDate(data.createdAt),
+      updatedAt: toDate(data.updatedAt),
+    };
+  });
+}
+
+/** Cria uma nota de conhecimento do time. */
+export async function createTeamNote(note: NewTeamNote): Promise<void> {
+  const { id, ...rest } = note;
+  await setDoc(doc(db, TEAM_NOTES, id), {
+    ...rest,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/** Atualiza uma nota de conhecimento do time. Só o criador (pelas regras). */
+export async function updateTeamNote(
+  id: string,
+  changes: TeamNoteUpdate,
+): Promise<void> {
+  await updateDoc(doc(db, TEAM_NOTES, id), {
+    ...changes,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/** Remove uma nota de conhecimento do time. */
+export async function deleteTeamNote(id: string): Promise<void> {
+  await deleteDoc(doc(db, TEAM_NOTES, id));
+}
+
+/* ------------------------------------------------------------------ */
+/* Repositório de casos de teste                                      */
+/* ------------------------------------------------------------------ */
+
+export type NewSavedCase = Omit<SavedTestCase, 'createdAt' | 'updatedAt'>;
+export type SavedCaseUpdate = Partial<
+  Omit<SavedTestCase, 'id' | 'createdBy' | 'createdAt' | 'updatedAt'>
+>;
+
+const SAVED_STATUSES: SavedCaseStatus[] = ['pendente', 'pass', 'fail'];
+
+function optStr(v: unknown): string | undefined {
+  return typeof v === 'string' && v.trim() ? v : undefined;
+}
+
+/** Lista todos os casos de teste salvos, mais recentes primeiro. */
+export async function getSavedCases(): Promise<SavedTestCase[]> {
+  const q = query(collection(db, TEST_CASES), orderBy('updatedAt', 'desc'));
+  const snapshot = await getDocs(q);
+
+  return snapshot.docs.map((d): SavedTestCase => {
+    const data = d.data();
+    const status = SAVED_STATUSES.includes(data.status as SavedCaseStatus)
+      ? (data.status as SavedCaseStatus)
+      : 'pendente';
+    return {
+      id: d.id,
+      grupo: typeof data.grupo === 'string' ? data.grupo : '',
+      tipo: (data.tipo ?? 'positivo') as TestCase['tipo'],
+      titulo: typeof data.titulo === 'string' ? data.titulo : '',
+      descricao: typeof data.descricao === 'string' ? data.descricao : '',
+      passos: Array.isArray(data.passos)
+        ? data.passos.map((p: unknown) => String(p))
+        : [],
+      resultado_esperado:
+        typeof data.resultado_esperado === 'string'
+          ? data.resultado_esperado
+          : '',
+      ca_coberto: typeof data.ca_coberto === 'string' ? data.ca_coberto : '',
+      explore: optStr(data.explore),
+      com: optStr(data.com),
+      para_validar: optStr(data.para_validar),
+      e: optStr(data.e),
+      sprint: typeof data.sprint === 'string' ? data.sprint : '',
+      modulo: typeof data.modulo === 'string' ? data.modulo : '',
+      status,
+      tempoMs: typeof data.tempoMs === 'number' ? data.tempoMs : 0,
+      createdBy: typeof data.createdBy === 'string' ? data.createdBy : '',
+      createdByName:
+        typeof data.createdByName === 'string' ? data.createdByName : '',
+      createdAt: toDate(data.createdAt),
+      updatedAt: toDate(data.updatedAt),
+    };
+  });
+}
+
+/** Cria um caso de teste no repositório. O id (UUID) vira o id do documento. */
+export async function createSavedCase(item: NewSavedCase): Promise<void> {
+  const { id, ...rest } = item;
+  await setDoc(doc(db, TEST_CASES, id), {
+    ...rest,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/** Atualiza um caso de teste salvo. Só o criador (pelas regras). */
+export async function updateSavedCase(
+  id: string,
+  changes: SavedCaseUpdate,
+): Promise<void> {
+  await updateDoc(doc(db, TEST_CASES, id), {
+    ...changes,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/** Remove um caso de teste salvo. */
+export async function deleteSavedCase(id: string): Promise<void> {
+  await deleteDoc(doc(db, TEST_CASES, id));
 }

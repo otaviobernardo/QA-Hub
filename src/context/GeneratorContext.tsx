@@ -26,10 +26,12 @@ export function timerElapsed(t: TimerState | undefined, now: number): number {
 const STORAGE_KEY = 'qa-hub-generator';
 
 interface PersistedState {
+  titulo: string;
   userStory: string;
   criteria: string;
   devAnalysis: string;
   tipos: Tipo[];
+  casosPorTipo: number;
   provider: ProviderId | '';
   model: string;
   cases: TestCase[] | null;
@@ -38,10 +40,12 @@ interface PersistedState {
 }
 
 const INITIAL: PersistedState = {
+  titulo: '',
   userStory: '',
   criteria: '',
   devAnalysis: '',
   tipos: ['positivo', 'negativo'],
+  casosPorTipo: 3,
   provider: '',
   model: '',
   cases: null,
@@ -63,6 +67,8 @@ function loadState(): PersistedState {
 }
 
 interface GeneratorContextValue {
+  titulo: string;
+  setTitulo: (v: string) => void;
   userStory: string;
   setUserStory: (v: string) => void;
   criteria: string;
@@ -71,6 +77,8 @@ interface GeneratorContextValue {
   setDevAnalysis: (v: string) => void;
   tipos: Tipo[];
   toggleTipo: (t: Tipo) => void;
+  casosPorTipo: number;
+  setCasosPorTipo: (n: number) => void;
   provider: ProviderId | '';
   setProvider: (v: ProviderId | '') => void;
   model: string;
@@ -78,6 +86,12 @@ interface GeneratorContextValue {
   cases: TestCase[] | null;
   /** Define os casos gerados e zera status e cronômetros (cada geração recomeça). */
   setCases: (cases: TestCase[] | null) => void;
+  /** Adiciona um caso manualmente ao final da lista. */
+  addCase: (tc: TestCase) => void;
+  /** Atualiza um caso gerado in-place (edição antes de salvar). */
+  updateCase: (index: number, updated: TestCase) => void;
+  /** Remove um caso gerado, reindexando status e cronômetros. */
+  removeCase: (index: number) => void;
   statuses: Record<number, CaseStatus>;
   /** Marca/desmarca o status de um caso (null = volta para pendente). */
   setStatus: (index: number, status: CaseStatus | null) => void;
@@ -108,6 +122,8 @@ export function GeneratorProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, ...p }));
 
   const value: GeneratorContextValue = {
+    titulo: state.titulo,
+    setTitulo: (v) => patch({ titulo: v }),
     userStory: state.userStory,
     setUserStory: (v) => patch({ userStory: v }),
     criteria: state.criteria,
@@ -122,12 +138,45 @@ export function GeneratorProvider({ children }: { children: ReactNode }) {
           ? s.tipos.filter((x) => x !== t)
           : [...s.tipos, t],
       })),
+    casosPorTipo: state.casosPorTipo,
+    setCasosPorTipo: (n) => patch({ casosPorTipo: n }),
     provider: state.provider,
     setProvider: (v) => patch({ provider: v }),
     model: state.model,
     setModel: (v) => patch({ model: v }),
     cases: state.cases,
     setCases: (cases) => patch({ cases, statuses: {}, timers: {} }),
+    addCase: (tc) =>
+      setState((s) => ({ ...s, cases: [...(s.cases ?? []), tc] })),
+    updateCase: (index, updated) =>
+      setState((s) => {
+        if (!s.cases) return s;
+        const next = s.cases.slice();
+        next[index] = updated;
+        return { ...s, cases: next };
+      }),
+    removeCase: (index) =>
+      setState((s) => {
+        if (!s.cases) return s;
+        const cases = s.cases.slice();
+        cases.splice(index, 1);
+        // Reindexa os mapas (chaves > index descem 1; a chave index é removida).
+        const reindex = <T,>(m: Record<number, T>): Record<number, T> => {
+          const out: Record<number, T> = {};
+          for (const [k, v] of Object.entries(m)) {
+            const i = Number(k);
+            if (i < index) out[i] = v;
+            else if (i > index) out[i - 1] = v;
+          }
+          return out;
+        };
+        return {
+          ...s,
+          cases,
+          statuses: reindex(s.statuses),
+          timers: reindex(s.timers),
+        };
+      }),
     statuses: state.statuses,
     setStatus: (index, status) =>
       setState((s) => {

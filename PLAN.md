@@ -313,3 +313,104 @@ do qa-hub-selbetti.html.
 - A chave Anthropic de cada usuário fica em `Firestore > users > {uid} > apiKey`
 - Os bugs ficam na coleção `bugs` e as notas de sprint em `sprintNotes`
 - O free tier do Firebase (Spark plan) suporta tranquilamente o volume desse time. Monitorar em Firebase Console > Usage se o time crescer muito.
+
+---
+
+## Fase 5 — Repositório de casos, conhecimento do time e novos dashboards
+
+Conjunto de melhorias pós-validação interna. Ordem por esforço/dependência.
+
+### 5.1 — Quantidade de casos no gerador (rápido)
+- Controle "Casos por tipo" no Gerador (ex.: 2 / 3 / 5).
+- Prompt instrui a IA a gerar N casos **por tipo selecionado**, cobrindo cenários distintos.
+- `max_tokens` da chamada escala com a quantidade esperada (evita resposta cortada).
+
+### 5.2 — Conhecimento do time (observações gerais)
+- Nova coleção `teamNotes` (compartilhada com todos os QAs): `title, category, content, tags, createdBy, createdByName, createdAt, updatedAt`.
+- Categorias: módulo / sistema / processo / outro.
+- UI dentro da aba **Base de conhecimento**, com seletor "Conceitos de QA" (estático) × "Conhecimento do time" (dinâmico).
+- Leitura por todos os autenticados; criar/editar/excluir pelo autor. Regras no `firestore.rules`.
+
+### 5.3 — Editar e salvar casos de teste (repositório)
+- Nova coleção `testCases`: caso (tipo, passos/charter, resultado, CA) + `status` (pendente/pass/fail) + `tempoMs` + `sprint?`, `modulo?` + autoria.
+- No Gerador: cada caso ganha **Editar** (inline/modal) e **Salvar** → grava em `testCases`.
+- Nova aba **"Casos de teste"** (rota `/casos`): tabela com filtros (sprint, módulo, tipo, status, busca), ver/editar/excluir, export CSV e "+ Novo manual".
+- Regras: leitura por autenticados; editar/excluir pelo criador (espelha `bugs`).
+
+### 5.4 — Novos dashboards
+- Sub-aba **"Tendências"** no Dashboard (já possível com os bugs): por módulo, por responsável, abertos vs. resolvidos por sprint, aging dos abertos.
+- Sub-aba **"Execução"** (depende de 5.3): pass rate por módulo/tipo, executados vs. pendentes por sprint, tempo gasto testando.
+
+**Entrega:** hub deixa de ser só gerador+registro e passa a gerenciar o ciclo gerar → salvar → executar → medir, com base de conhecimento operacional do time.
+
+---
+
+## Fase 6 — Integração com Azure DevOps
+
+Permitir que o QA leia, mova, atualize, escreva e crie cards do Azure DevOps a partir do hub.
+
+### Contexto confirmado
+- Organização: `selbettidev` · Projeto: `SHARE-4` · Time: `SQUAD SHARE-4`.
+- Processo Scrum **customizado**: Tasks e Bugs usam os estados **New → Committed → Done**.
+- Itens relevantes: Tasks "Análise/Desenvolvimento/Mapa de testes/Testes/Code Review" (filhas do PBI) e Bugs "BUG | …". Novos testes são **Tasks filhas do PBI** ("Teste | …").
+
+### Arquitetura
+- Navegador **não** chama o Azure DevOps direto (CORS + segurança do PAT).
+- **Proxy de relay em Cloudflare Worker** (grátis, sem cartão) — resolve CORS; não guarda nada; repassa usando o PAT enviado no header. Código em `cloudflare-worker/`.
+- **Auth por QA**: cada um cria um PAT (escopo Work Items – Read & Write) salvo em `users/{uid}` no Firestore; o app lê o próprio PAT e envia ao proxy por requisição.
+
+### Operações (REST `api-version=7.1`)
+1. **Ler card:** `GET /_apis/wit/workitems/{id}?$expand=all`.
+2. **Mover / status:** `PATCH /_apis/wit/workitems/{id}` (json-patch) → `System.State`. Estados válidos lidos da API (não chumbados).
+3. **Adicionar escrita:** `PATCH` em `/fields/System.History` (comentário) ou campo (`System.Description`, `Microsoft.VSTS.TCM.ReproSteps`).
+4. **Criar card:** `POST /_apis/wit/workitems/$Bug` (ou `$Task`) com título, Área e Iteração.
+5. **Vincular:** relação no patch (Task "Teste | …" como filha do PBio; teste relacionado ao Bug).
+
+### Passos de implementação
+- [ ] Deploy do Worker (cloudflare-worker/) + `VITE_ADO_PROXY_URL` no `.env`.
+- [ ] `src/lib/azure.ts` — cliente que fala com o proxy (ler/mover/escrever/criar/vincular) + leitura dos estados válidos.
+- [ ] Campo "PAT do Azure DevOps" em Configurações (salvo em `users/{uid}`).
+- [ ] Vincular bug/caso do hub a um work item (guardar o ID do Azure) e ações na UI (ler estado, mover, comentar, criar).
+
+**Entrega:** QA opera os cards do Azure DevOps sem sair do hub, com o próprio PAT.
+
+---
+
+## Fase 7 — Reorganização (Testes / Bugs / Dashboard) e sync com Azure
+
+### 7.1 — Nova navegação
+- **Testes** (sub-abas: Gerador | Casos de teste | Execução).
+- **Bugs** (após Testes) — cadastro/edição/exclusão de bugs + status editável por bug.
+- **Dashboard** — somente consulta (Visão geral + Tendências), sem cadastro.
+- **Base de conhecimento** — inalterada.
+
+### 7.2 — Gerador
+- Só gerar casos + adicionar/editar/excluir. **Sem Passou/Falhou e sem Timer** (isso vai para Execução).
+
+### 7.3 — Execução de testes
+- Sobre os casos salvos: escolher um conjunto (título), rodar cada caso com **timer** e marcar **Passou/Falhou** — persistindo status e tempo no Firestore.
+
+### 7.4 — Bugs
+- Cadastro sai do Dashboard e vai para a aba Bugs.
+- Status editável direto na lista.
+- **Responsável** = nome de quem cadastra (automático, não manual).
+- **Ambiente** ganha um detalhe livre por ambiente (ex.: Dev → branch; Homologação → VM; Produção → cliente).
+- **Módulo e Sprint em dropdown** — ⏳ **fonte das opções ainda não decidida** (lembrar de definir: valores existentes / Azure / lista fixa).
+
+### 7.5 — Sincronização com Azure DevOps
+- **Push (app → Azure):** ao criar/atualizar bug no hub, refletir no work item (criar/atualizar estado e campos).
+- **Pull (Azure → app):** botão "Sincronizar" que lê o work item e atualiza o bug local.
+- Vínculo bug ↔ work item (guardar o ID do Azure no bug). (Tempo real Azure→app via webhooks ficou fora.)
+
+**Entrega:** hub reorganizado por fluxo (testar → registrar bug → consultar), com bugs sincronizados ao Azure.
+
+### Status de implementação (Fase 7)
+- [x] 7.1 Navegação (Dashboard | Testes | Bugs | Base) + aba Bugs com CRUD + Dashboard só consulta.
+- [x] 7.2 Gerador limpo (sem Passou/Falhou e timer) + "Adicionar caso" manual.
+- [x] 7.3 Execução de testes (timer + Passou/Falhou persistidos no Firestore).
+- [x] 7.4 Bugs: status inline, ambiente detalhado, responsável automático.
+- [x] 7.5 Sync Azure — **Bugs apenas**: push ao salvar (cria Task "BUG | …" filha do PBI informado; atualiza estado) + pull manual ("Sincronizar Azure"). Mapa de status: Aberto→New, Em andamento→Committed, Resolvido/Fechado→Done.
+- [ ] **#8 Módulo/Sprint em dropdown** — ⏳ AINDA PENDENTE: fonte das opções não decidida.
+- [ ] Sync de **casos de teste** com Azure (push "Teste | …") — adiado, fora do escopo desta etapa.
+
+> **Lembrete:** republicar `firestore.rules` no Firebase (inclui teamNotes e testCases).

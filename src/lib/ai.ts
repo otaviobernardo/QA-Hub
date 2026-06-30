@@ -50,19 +50,27 @@ export interface GenerateParams {
   acceptanceCriteria: string;
   devAnalysis?: string;
   tipos: TestCase['tipo'][];
+  /** Quantos casos gerar por tipo selecionado (default 3). */
+  casosPorTipo?: number;
 }
 
 /* ------------------------------------------------------------------ */
 /* Prompt                                                             */
 /* ------------------------------------------------------------------ */
 
-function buildSystemPrompt(tipos: TestCase['tipo'][]): string {
+function buildSystemPrompt(
+  tipos: TestCase['tipo'][],
+  casosPorTipo: number,
+): string {
   const lista = tipos.join(', ');
   const lines = [
     'Você é um QA sênior especializado em derivar casos de teste a partir de',
     'User Stories e Critérios de Aceite.',
     '',
     `Gere casos de teste cobrindo os tipos: ${lista}.`,
+    `Para CADA tipo selecionado, gere aproximadamente ${casosPorTipo} casos`,
+    'distintos e relevantes — cubra cenários diferentes (não repita variações',
+    'triviais nem invente requisitos fora da User Story / Critérios de Aceite).',
     '',
     'Responda APENAS com um array JSON válido. Sem markdown, sem cercas de',
     'código (```), sem texto antes ou depois. Cada item do array deve ter',
@@ -230,6 +238,7 @@ async function callAnthropic(
   model: string,
   system: string,
   userContent: string,
+  maxTokens: number,
 ): Promise<string> {
   const response = await doFetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -241,7 +250,7 @@ async function callAnthropic(
     },
     body: JSON.stringify({
       model,
-      max_tokens: 8000,
+      max_tokens: maxTokens,
       system,
       messages: [{ role: 'user', content: userContent }],
     }),
@@ -263,6 +272,7 @@ async function callOpenAICompatible(
   model: string,
   system: string,
   userContent: string,
+  maxTokens: number,
 ): Promise<string> {
   const response = await doFetch(`${def.baseUrl}/chat/completions`, {
     method: 'POST',
@@ -272,7 +282,7 @@ async function callOpenAICompatible(
     },
     body: JSON.stringify({
       model,
-      max_tokens: 8000,
+      max_tokens: maxTokens,
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: system },
@@ -293,6 +303,7 @@ async function callGemini(
   model: string,
   system: string,
   userContent: string,
+  maxTokens: number,
 ): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
     model,
@@ -305,7 +316,7 @@ async function callGemini(
       contents: [{ role: 'user', parts: [{ text: userContent }] }],
       generationConfig: {
         responseMimeType: 'application/json',
-        maxOutputTokens: 8000,
+        maxOutputTokens: maxTokens,
       },
     }),
   });
@@ -330,27 +341,46 @@ async function callGemini(
 export async function generateTestCases(
   params: GenerateParams,
 ): Promise<TestCase[]> {
-  const { provider, model, apiKey, userStory, acceptanceCriteria, devAnalysis, tipos } =
-    params;
+  const {
+    provider,
+    model,
+    apiKey,
+    userStory,
+    acceptanceCriteria,
+    devAnalysis,
+    tipos,
+    casosPorTipo = 3,
+  } = params;
 
   const def = PROVIDER_MAP[provider];
   if (!def) {
     throw new TestCaseGenError('unknown', 'Provedor de IA desconhecido.');
   }
 
-  const system = buildSystemPrompt(tipos);
+  const system = buildSystemPrompt(tipos, casosPorTipo);
   const userContent = buildUserContent(userStory, acceptanceCriteria, devAnalysis);
+
+  // Escala o limite de saída com a quantidade esperada para evitar corte.
+  const expected = Math.max(1, casosPorTipo) * Math.max(1, tipos.length);
+  const maxTokens = Math.min(16000, Math.max(4000, expected * 500));
 
   let text: string;
   switch (def.kind) {
     case 'anthropic':
-      text = await callAnthropic(apiKey, model, system, userContent);
+      text = await callAnthropic(apiKey, model, system, userContent, maxTokens);
       break;
     case 'gemini':
-      text = await callGemini(apiKey, model, system, userContent);
+      text = await callGemini(apiKey, model, system, userContent, maxTokens);
       break;
     case 'openai':
-      text = await callOpenAICompatible(def, apiKey, model, system, userContent);
+      text = await callOpenAICompatible(
+        def,
+        apiKey,
+        model,
+        system,
+        userContent,
+        maxTokens,
+      );
       break;
   }
 

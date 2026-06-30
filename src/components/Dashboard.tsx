@@ -1,24 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Bug } from '../types';
+import { useAuth } from '../context/AuthContext';
 import { getBugs } from '../lib/db';
 import { SEVERITIES, STATUSES, severityBadge, statusBadge } from '../lib/bugOptions';
-import BugTable from './BugTable';
-import BugModal, { type BugModalMode } from './BugModal';
 import SprintNotes from './SprintNotes';
 
-type Tab = 'overview' | 'list';
-
-interface ModalState {
-  mode: BugModalMode;
-  bug?: Bug;
-}
+type Tab = 'overview' | 'trends';
 
 export default function Dashboard() {
   const [bugs, setBugs] = useState<Bug[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [tab, setTab] = useState<Tab>('overview');
-  const [modal, setModal] = useState<ModalState | null>(null);
 
   const loadBugs = async (): Promise<void> => {
     setLoading(true);
@@ -77,41 +70,14 @@ export default function Dashboard() {
         <TabButton active={tab === 'overview'} onClick={() => setTab('overview')}>
           Visão geral
         </TabButton>
-        <TabButton active={tab === 'list'} onClick={() => setTab('list')}>
-          Lista de bugs
+        <TabButton active={tab === 'trends'} onClick={() => setTab('trends')}>
+          Tendências
         </TabButton>
       </div>
 
-      {tab === 'overview' ? (
-        <Overview bugs={bugs} sprints={sprints} />
-      ) : (
-        <div className="space-y-4">
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => setModal({ mode: 'create' })}
-              className="rounded-md bg-selbetti-green px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-selbetti-green/90"
-            >
-              + Novo bug
-            </button>
-          </div>
-          <BugTable
-            bugs={bugs}
-            onView={(bug) => setModal({ mode: 'view', bug })}
-            onEdit={(bug) => setModal({ mode: 'edit', bug })}
-            onChanged={() => void loadBugs()}
-          />
-        </div>
-      )}
+      {tab === 'overview' && <Overview bugs={bugs} sprints={sprints} />}
 
-      {modal && (
-        <BugModal
-          mode={modal.mode}
-          bug={modal.bug}
-          onClose={() => setModal(null)}
-          onSaved={() => void loadBugs()}
-        />
-      )}
+      {tab === 'trends' && <Trends bugs={bugs} />}
     </div>
   );
 }
@@ -119,53 +85,68 @@ export default function Dashboard() {
 /* ----------------------------- Visão geral ------------------------ */
 
 function Overview({ bugs, sprints }: { bugs: Bug[]; sprints: string[] }) {
-  const total = bugs.length;
-  const open = bugs.filter((b) => b.status === 'Aberto').length;
-  const inProgress = bugs.filter((b) => b.status === 'Em andamento').length;
-  const resolved = bugs.filter(
+  const { user } = useAuth();
+  const uid = user?.uid ?? '';
+  const [onlyMine, setOnlyMine] = useState(true);
+
+  const visible = onlyMine ? bugs.filter((b) => b.createdBy === uid) : bugs;
+
+  const total = visible.length;
+  const open = visible.filter((b) => b.status === 'Aberto').length;
+  const inProgress = visible.filter((b) => b.status === 'Em andamento').length;
+  const resolved = visible.filter(
     (b) => b.status === 'Resolvido' || b.status === 'Fechado',
   ).length;
-  const critical = bugs.filter((b) => b.severity === 'Crítico').length;
+  const critical = visible.filter((b) => b.severity === 'Crítico').length;
 
   const bySeverity = SEVERITIES.map((s) => ({
     label: s,
-    count: bugs.filter((b) => b.severity === s).length,
+    count: visible.filter((b) => b.severity === s).length,
     badge: severityBadge[s],
   }));
   const byStatus = STATUSES.map((s) => ({
     label: s,
-    count: bugs.filter((b) => b.status === s).length,
+    count: visible.filter((b) => b.status === s).length,
     badge: statusBadge[s],
   }));
 
-  if (total === 0) {
-    return (
-      <div className="space-y-6">
-        <div className="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400">
-          Nenhum bug registrado ainda. Use a aba <strong>Lista de bugs</strong> para
-          criar o primeiro.
-        </div>
-        <SprintNotes sprints={sprints} />
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
-      {/* Cards de métricas */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-        <MetricCard label="Total" value={total} accent="text-gray-800 dark:text-gray-100" />
-        <MetricCard label="Abertos" value={open} accent="text-red-600" />
-        <MetricCard label="Em andamento" value={inProgress} accent="text-selbetti-purple" />
-        <MetricCard label="Resolvidos" value={resolved} accent="text-selbetti-green" />
-        <MetricCard label="Críticos" value={critical} accent="text-selbetti-orange" />
-      </div>
+      {/* Toggle meus / todos */}
+      <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+        <input
+          type="checkbox"
+          checked={onlyMine}
+          onChange={(e) => setOnlyMine(e.target.checked)}
+          className="h-4 w-4 rounded border-gray-300 text-selbetti-green focus:ring-selbetti-green"
+        />
+        {onlyMine ? 'Vendo apenas os meus bugs' : 'Vendo todos os bugs'}
+      </label>
 
-      {/* Distribuições */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <DistributionCard title="Por severidade" items={bySeverity} total={total} />
-        <DistributionCard title="Por status" items={byStatus} total={total} />
-      </div>
+      {total === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400">
+          {bugs.length > 0 && onlyMine
+            ? 'Você ainda não registrou bugs. Desmarque o filtro para ver os de todos.'
+            : 'Nenhum bug registrado ainda. Use a aba Lista de bugs para criar o primeiro.'}
+        </div>
+      ) : (
+        <>
+          {/* Cards de métricas */}
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+            <MetricCard label="Total" value={total} accent="text-gray-800 dark:text-gray-100" />
+            <MetricCard label="Abertos" value={open} accent="text-red-600" />
+            <MetricCard label="Em andamento" value={inProgress} accent="text-selbetti-purple" />
+            <MetricCard label="Resolvidos" value={resolved} accent="text-selbetti-green" />
+            <MetricCard label="Críticos" value={critical} accent="text-selbetti-orange" />
+          </div>
+
+          {/* Distribuições */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <DistributionCard title="Por severidade" items={bySeverity} total={total} />
+            <DistributionCard title="Por status" items={byStatus} total={total} />
+          </div>
+        </>
+      )}
 
       <SprintNotes sprints={sprints} />
     </div>
@@ -226,6 +207,131 @@ function DistributionCard({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/* ----------------------------- Tendências ------------------------ */
+
+const NEUTRAL_BADGE = 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300';
+
+function countBy(bugs: Bug[], key: (b: Bug) => string): Record<string, number> {
+  const acc: Record<string, number> = {};
+  for (const b of bugs) {
+    const k = key(b) || '—';
+    acc[k] = (acc[k] ?? 0) + 1;
+  }
+  return acc;
+}
+
+function toItems(counts: Record<string, number>) {
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([label, count]) => ({ label, count, badge: NEUTRAL_BADGE }));
+}
+
+function Trends({ bugs }: { bugs: Bug[] }) {
+  if (bugs.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400">
+        Sem bugs para gerar tendências.
+      </div>
+    );
+  }
+
+  const open = bugs.filter(
+    (b) => b.status === 'Aberto' || b.status === 'Em andamento',
+  );
+
+  // Aging dos bugs abertos por faixa de idade.
+  const ageBuckets: Record<string, number> = {
+    '0–3 dias': 0,
+    '4–7 dias': 0,
+    '8–14 dias': 0,
+    '15+ dias': 0,
+  };
+  const now = Date.now();
+  for (const b of open) {
+    const days = (now - b.createdAt.getTime()) / 86_400_000;
+    if (days <= 3) ageBuckets['0–3 dias']++;
+    else if (days <= 7) ageBuckets['4–7 dias']++;
+    else if (days <= 14) ageBuckets['8–14 dias']++;
+    else ageBuckets['15+ dias']++;
+  }
+
+  const sprints = [...new Set(bugs.map((b) => b.sprint).filter(Boolean))].sort();
+  const bySprint = sprints.map((s) => {
+    const inSprint = bugs.filter((b) => b.sprint === s);
+    const resolved = inSprint.filter(
+      (b) => b.status === 'Resolvido' || b.status === 'Fechado',
+    ).length;
+    return { sprint: s, total: inSprint.length, resolved, open: inSprint.length - resolved };
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <DistributionCard
+          title="Bugs por módulo"
+          items={toItems(countBy(bugs, (b) => b.module))}
+          total={bugs.length}
+        />
+        <DistributionCard
+          title="Bugs por responsável"
+          items={toItems(countBy(bugs, (b) => b.assignee))}
+          total={bugs.length}
+        />
+        <DistributionCard
+          title="Bugs abertos por idade (aging)"
+          items={Object.entries(ageBuckets).map(([label, count]) => ({
+            label,
+            count,
+            badge: NEUTRAL_BADGE,
+          }))}
+          total={open.length}
+        />
+        <SprintProgressCard data={bySprint} />
+      </div>
+    </div>
+  );
+}
+
+function SprintProgressCard({
+  data,
+}: {
+  data: { sprint: string; total: number; resolved: number; open: number }[];
+}) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+      <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">
+        Abertos vs. resolvidos por sprint
+      </h3>
+      {data.length === 0 ? (
+        <p className="mt-4 text-sm text-gray-400 dark:text-gray-500">Sem sprints.</p>
+      ) : (
+        <div className="mt-4 space-y-3">
+          {data.map((s) => {
+            const pctResolved =
+              s.total > 0 ? Math.round((s.resolved / s.total) * 100) : 0;
+            return (
+              <div key={s.sprint}>
+                <div className="mb-1 flex items-center justify-between text-sm">
+                  <span className="text-gray-600 dark:text-gray-300">{s.sprint}</span>
+                  <span className="text-gray-500 dark:text-gray-400">
+                    {s.resolved}/{s.total} resolvidos
+                  </span>
+                </div>
+                <div className="flex h-2 overflow-hidden rounded-full bg-selbetti-orange/30">
+                  <div
+                    className="h-full rounded-full bg-selbetti-green"
+                    style={{ width: `${pctResolved}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

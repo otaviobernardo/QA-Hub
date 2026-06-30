@@ -169,7 +169,7 @@ export default function BugTable({ bugs, onView, onEdit, onChanged }: BugTablePr
             }}
             className="h-4 w-4 rounded border-gray-300 text-selbetti-green focus:ring-selbetti-green"
           />
-          {onlyMine ? 'Vendo apenas os meus' : 'Vendo todos'}
+          {onlyMine ? 'Exibindo apenas os meus' : 'Exibindo todos'}
         </label>
 
         <div className="flex items-center gap-3">
