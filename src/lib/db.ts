@@ -144,22 +144,34 @@ export async function getBugs(): Promise<Bug[]> {
       severity: data.severity,
       priority: data.priority,
       environment: data.environment,
+      environmentDetail: data.environmentDetail ?? '',
       status: data.status,
       description: data.description ?? '',
       evidence: data.evidence ?? '',
       assignee: data.assignee ?? '',
       createdBy: data.createdBy ?? '',
+      azureWorkItemId: data.azureWorkItemId ?? undefined,
+      azureParentId: data.azureParentId ?? undefined,
+      azureUrl: data.azureUrl ?? undefined,
+      azureSyncedAt: data.azureSyncedAt ? toDate(data.azureSyncedAt) : undefined,
       createdAt: toDate(data.createdAt),
       updatedAt: toDate(data.updatedAt),
     };
   });
 }
 
+/** Remove chaves com valor undefined — o Firestore rejeita undefined. */
+function stripUndefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, v]) => v !== undefined),
+  ) as Partial<T>;
+}
+
 /** Cria um bug. O id (UUID) é gerado no cliente e vira o id do documento. */
 export async function createBug(bug: NewBug): Promise<void> {
   const { id, ...rest } = bug;
   await setDoc(doc(db, BUGS, id), {
-    ...rest,
+    ...stripUndefined(rest),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -168,7 +180,7 @@ export async function createBug(bug: NewBug): Promise<void> {
 /** Atualiza os campos editáveis de um bug. */
 export async function updateBug(id: string, changes: BugUpdate): Promise<void> {
   await updateDoc(doc(db, BUGS, id), {
-    ...changes,
+    ...stripUndefined(changes),
     updatedAt: serverTimestamp(),
   });
 }

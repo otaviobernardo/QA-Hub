@@ -403,3 +403,14 @@ Permitir que o QA leia, mova, atualize, escreva e crie cards do Azure DevOps a p
 - Vínculo bug ↔ work item (guardar o ID do Azure no bug). (Tempo real Azure→app via webhooks ficou fora.)
 
 **Entrega:** hub reorganizado por fluxo (testar → registrar bug → consultar), com bugs sincronizados ao Azure.
+
+### Status de implementação (Fase 7)
+- [x] 7.1 Navegação (Dashboard | Testes | Bugs | Base) + aba Bugs com CRUD + Dashboard só consulta.
+- [x] 7.2 Gerador limpo (sem Passou/Falhou e timer) + "Adicionar caso" manual.
+- [x] 7.3 Execução de testes (timer + Passou/Falhou persistidos no Firestore).
+- [x] 7.4 Bugs: status inline, ambiente detalhado, responsável automático.
+- [x] 7.5 Sync Azure — **Bugs apenas**: push ao salvar (cria Task "BUG | …" filha do PBI informado; atualiza estado) + pull manual ("Sincronizar Azure"). Mapa de status: Aberto→New, Em andamento→Committed, Resolvido/Fechado→Done.
+- [ ] **#8 Módulo/Sprint em dropdown** — ⏳ AINDA PENDENTE: fonte das opções não decidida.
+- [ ] Sync de **casos de teste** com Azure (push "Teste | …") — adiado, fora do escopo desta etapa.
+
+> **Lembrete:** republicar `firestore.rules` no Firebase (inclui teamNotes e testCases).

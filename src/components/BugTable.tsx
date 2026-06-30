@@ -1,8 +1,15 @@
 import { useMemo, useState } from 'react';
 import type { Bug, BugStatus, Severity } from '../types';
-import { deleteBug } from '../lib/db';
+import { deleteBug, updateBug, getUserProfile } from '../lib/db';
+import { pushBugStatus } from '../lib/bugSync';
 import { useAuth } from '../context/AuthContext';
-import { STATUSES, SEVERITIES, severityBadge, statusBadge } from '../lib/bugOptions';
+import {
+  STATUSES,
+  SEVERITIES,
+  ENV_DETAIL_META,
+  severityBadge,
+  statusBadge,
+} from '../lib/bugOptions';
 
 const PAGE_SIZE = 20;
 
@@ -25,6 +32,7 @@ export default function BugTable({ bugs, onView, onEdit, onChanged }: BugTablePr
   const [onlyMine, setOnlyMine] = useState(true);
   const [page, setPage] = useState(1);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [statusSavingId, setStatusSavingId] = useState<string | null>(null);
 
   const sprints = useMemo(
     () => [...new Set(bugs.map((b) => b.sprint).filter(Boolean))].sort(),
@@ -73,6 +81,37 @@ export default function BugTable({ bugs, onView, onEdit, onChanged }: BugTablePr
       window.alert('Não foi possível excluir o bug. Tente novamente.');
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleStatusChange = async (
+    bug: Bug,
+    next: BugStatus,
+  ): Promise<void> => {
+    if (next === bug.status) return;
+    setStatusSavingId(bug.id);
+    try {
+      await updateBug(bug.id, { status: next });
+      // Push best-effort para o Azure, se o bug estiver vinculado.
+      if (bug.azureWorkItemId) {
+        try {
+          const profile = await getUserProfile(uid);
+          const pat = profile?.azurePat?.trim();
+          if (pat) {
+            await pushBugStatus(pat, bug.azureWorkItemId, next);
+            await updateBug(bug.id, { azureSyncedAt: new Date() });
+          }
+        } catch {
+          window.alert(
+            'Status salvo localmente, mas não sincronizou com o Azure DevOps.',
+          );
+        }
+      }
+      onChanged();
+    } catch {
+      window.alert('Não foi possível atualizar o status. Tente novamente.');
+    } finally {
+      setStatusSavingId(null);
     }
   };
 
@@ -220,9 +259,27 @@ export default function BugTable({ bugs, onView, onEdit, onChanged }: BugTablePr
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusBadge[bug.status]}`}>
-                      {bug.status}
-                    </span>
+                    {bug.createdBy === uid ? (
+                      <select
+                        value={bug.status}
+                        disabled={statusSavingId === bug.id}
+                        onChange={(e) =>
+                          void handleStatusChange(bug, e.target.value as BugStatus)
+                        }
+                        aria-label="Alterar status"
+                        className={`app-select rounded-full border-0 px-2 py-0.5 text-xs font-medium outline-none ring-1 ring-inset ring-black/5 focus:ring-2 focus:ring-selbetti-green disabled:opacity-50 dark:ring-white/10 ${statusBadge[bug.status]}`}
+                      >
+                        {STATUSES.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusBadge[bug.status]}`}>
+                        {bug.status}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{bug.assignee}</td>
                   <td className="px-4 py-3">
@@ -297,6 +354,7 @@ function exportBugsCsv(bugs: Bug[]): void {
     'Severidade',
     'Prioridade',
     'Ambiente',
+    'Detalhe do ambiente',
     'Status',
     'Sprint',
     'Responsável',
@@ -312,6 +370,7 @@ function exportBugsCsv(bugs: Bug[]): void {
       b.severity,
       b.priority,
       b.environment,
+      `${ENV_DETAIL_META[b.environment].label}: ${b.environmentDetail}`,
       b.status,
       b.sprint,
       b.assignee,

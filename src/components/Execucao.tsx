@@ -95,6 +95,23 @@ export default function Execucao() {
     }
   };
 
+  const resetTimer = async (c: SavedTestCase): Promise<void> => {
+    if (elapsedOf(c) === 0) return;
+    if (!window.confirm(`Zerar o tempo do caso "${c.titulo}"?`)) return;
+    // Para o cronômetro, se estiver rodando, e zera o tempo acumulado.
+    setRunning((prev) => {
+      const next = { ...prev };
+      delete next[c.id];
+      return next;
+    });
+    patchLocal(c.id, { tempoMs: 0 });
+    try {
+      await updateSavedCase(c.id, { tempoMs: 0 });
+    } catch {
+      window.alert('Não foi possível zerar o tempo. Tente novamente.');
+    }
+  };
+
   const setStatus = async (c: SavedTestCase, status: SavedCaseStatus): Promise<void> => {
     const next = c.status === status ? 'pendente' : status;
     patchLocal(c.id, { status: next });
@@ -144,10 +161,10 @@ export default function Execucao() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
+        <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">
           Execução de testes
-        </h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
+        </h1>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
           Escolha um conjunto, rode cada caso com o cronômetro e marque
           Passou/Falhou. Tudo é salvo automaticamente.
         </p>
@@ -192,13 +209,13 @@ export default function Execucao() {
               </button>
 
               {isOpen && (
-                <div className="divide-y divide-gray-100 border-t border-gray-100 dark:divide-gray-700 dark:border-gray-700">
+                <div className="space-y-3 border-t border-gray-100 p-4 dark:border-gray-700">
                   {items.map((c) => {
                     const isRunning = Boolean(running[c.id]);
                     return (
-                      <div
+                      <article
                         key={c.id}
-                        className={`flex flex-wrap items-center gap-3 px-4 py-3 ${
+                        className={`rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800/60 ${
                           c.status === 'pass'
                             ? 'border-l-4 border-l-selbetti-green'
                             : c.status === 'fail'
@@ -206,65 +223,146 @@ export default function Execucao() {
                               : ''
                         }`}
                       >
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-xs font-medium ${tipoBadge[c.tipo]}`}
-                        >
-                          {tipoLabel[c.tipo]}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-800 dark:text-gray-100">
-                          {c.titulo}
-                        </span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${tipoBadge[c.tipo]}`}
+                          >
+                            {tipoLabel[c.tipo]}
+                          </span>
+                          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                            {c.titulo}
+                          </h3>
+                          <span
+                            className={`ml-auto rounded-full px-2 py-0.5 text-xs font-medium ${savedStatusBadge[c.status]}`}
+                          >
+                            {SAVED_STATUS_LABEL[c.status]}
+                          </span>
+                        </div>
 
-                        <span className="min-w-[3.5rem] font-mono text-sm tabular-nums text-gray-700 dark:text-gray-200">
-                          {formatTime(elapsedOf(c))}
-                        </span>
-                        {isRunning ? (
-                          <button
-                            type="button"
-                            onClick={() => void stopTimer(c)}
-                            className="rounded-md border border-selbetti-orange bg-selbetti-orange/10 px-3 py-1 text-xs font-semibold text-selbetti-orange transition-colors hover:bg-selbetti-orange/20"
-                          >
-                            ⏸ Parar
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => startTimer(c.id)}
-                            className="rounded-md border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
-                          >
-                            ▶ Iniciar
-                          </button>
+                        {c.descricao && (
+                          <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">
+                            {c.descricao}
+                          </p>
                         )}
 
-                        <button
-                          type="button"
-                          onClick={() => void setStatus(c, 'pass')}
-                          className={`rounded-md border px-3 py-1 text-xs font-semibold transition-colors ${
-                            c.status === 'pass'
-                              ? 'border-selbetti-green bg-selbetti-green text-white'
-                              : 'border-gray-300 text-selbetti-green hover:bg-selbetti-green/10 dark:border-gray-600 dark:text-green-400'
-                          }`}
-                        >
-                          ✓ Passou
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void setStatus(c, 'fail')}
-                          className={`rounded-md border px-3 py-1 text-xs font-semibold transition-colors ${
-                            c.status === 'fail'
-                              ? 'border-red-500 bg-red-500 text-white'
-                              : 'border-gray-300 text-red-600 hover:bg-red-50 dark:border-gray-600 dark:text-red-400 dark:hover:bg-red-500/10'
-                          }`}
-                        >
-                          ✗ Falhou
-                        </button>
+                        {c.tipo === 'exploratorio' &&
+                          (c.explore || c.com || c.para_validar || c.e) && (
+                            <dl className="mt-3 space-y-2 rounded-md border border-fuchsia-200 bg-fuchsia-50 p-3 dark:border-fuchsia-500/20 dark:bg-fuchsia-500/10">
+                              {(
+                                [
+                                  ['Explore', c.explore],
+                                  ['Com', c.com],
+                                  ['Para validar', c.para_validar],
+                                  ['E', c.e],
+                                ] as const
+                              ).map(([label, val]) =>
+                                val ? (
+                                  <div key={label}>
+                                    <dt className="text-xs font-bold uppercase tracking-wide text-fuchsia-700 dark:text-fuchsia-300">
+                                      {label}
+                                    </dt>
+                                    <dd className="text-sm text-gray-700 dark:text-gray-300">
+                                      {val}
+                                    </dd>
+                                  </div>
+                                ) : null,
+                              )}
+                            </dl>
+                          )}
 
-                        <span
-                          className={`hidden rounded-full px-2 py-0.5 text-xs font-medium sm:inline ${savedStatusBadge[c.status]}`}
-                        >
-                          {SAVED_STATUS_LABEL[c.status]}
-                        </span>
-                      </div>
+                        {c.passos.length > 0 && (
+                          <div className="mt-3">
+                            <p className="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                              Passos
+                            </p>
+                            <ol className="mt-1 list-decimal space-y-1 pl-5 text-sm text-gray-700 dark:text-gray-300">
+                              {c.passos.map((passo, i) => (
+                                <li key={i}>{passo}</li>
+                              ))}
+                            </ol>
+                          </div>
+                        )}
+
+                        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div>
+                            <p className="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                              Resultado esperado
+                            </p>
+                            <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
+                              {c.resultado_esperado || '—'}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                              CA/RN coberto
+                            </p>
+                            <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
+                              {c.ca_coberto || '—'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-3 dark:border-gray-700">
+                          {/* Cronômetro */}
+                          <div className="flex items-center gap-2">
+                            <span className="min-w-[3.5rem] font-mono text-sm tabular-nums text-gray-700 dark:text-gray-200">
+                              {formatTime(elapsedOf(c))}
+                            </span>
+                            {isRunning ? (
+                              <button
+                                type="button"
+                                onClick={() => void stopTimer(c)}
+                                className="rounded-md border border-selbetti-orange bg-selbetti-orange/10 px-3 py-1 text-xs font-semibold text-selbetti-orange transition-colors hover:bg-selbetti-orange/20"
+                              >
+                                ⏸ Parar
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => startTimer(c.id)}
+                                className="rounded-md border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                              >
+                                ▶ Iniciar
+                              </button>
+                            )}
+                            {!isRunning && elapsedOf(c) > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => void resetTimer(c)}
+                                className="text-xs font-medium text-gray-400 underline transition-colors hover:text-gray-600 dark:hover:text-gray-300"
+                              >
+                                Zerar
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Resultado */}
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void setStatus(c, 'pass')}
+                              className={`rounded-md border px-3 py-1 text-xs font-semibold transition-colors ${
+                                c.status === 'pass'
+                                  ? 'border-selbetti-green bg-selbetti-green text-white'
+                                  : 'border-gray-300 text-selbetti-green hover:bg-selbetti-green/10 dark:border-gray-600 dark:text-green-400'
+                              }`}
+                            >
+                              ✓ Passou
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void setStatus(c, 'fail')}
+                              className={`rounded-md border px-3 py-1 text-xs font-semibold transition-colors ${
+                                c.status === 'fail'
+                                  ? 'border-red-500 bg-red-500 text-white'
+                                  : 'border-gray-300 text-red-600 hover:bg-red-50 dark:border-gray-600 dark:text-red-400 dark:hover:bg-red-500/10'
+                              }`}
+                            >
+                              ✗ Falhou
+                            </button>
+                          </div>
+                        </div>
+                      </article>
                     );
                   })}
                 </div>

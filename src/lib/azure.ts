@@ -83,6 +83,7 @@ async function callProxy<T = unknown>(pat: string, req: ProxyRequest): Promise<T
 export interface WorkItem {
   id: number;
   fields: Record<string, unknown>;
+  relations?: { rel: string; url: string }[];
 }
 
 /** Lê um work item com todos os campos. */
@@ -106,6 +107,26 @@ export function updateState(
     query: `api-version=${API_VERSION}`,
     contentType: 'application/json-patch+json',
     body: [{ op: 'add', path: '/fields/System.State', value: state }],
+  });
+}
+
+/** Atualiza um ou mais campos do work item (ex.: System.Description). */
+export function updateFields(
+  pat: string,
+  id: number | string,
+  fields: Record<string, string | number>,
+): Promise<WorkItem> {
+  const ops = Object.entries(fields).map(([f, v]) => ({
+    op: 'add',
+    path: `/fields/${f}`,
+    value: v,
+  }));
+  return callProxy<WorkItem>(pat, {
+    method: 'PATCH',
+    path: `/${ORG}/${PROJECT}/_apis/wit/workitems/${id}`,
+    query: `api-version=${API_VERSION}`,
+    contentType: 'application/json-patch+json',
+    body: ops,
   });
 }
 
@@ -198,3 +219,16 @@ export function field(item: WorkItem, name: string): string {
   const v = item.fields?.[name];
   return v == null ? '' : String(v);
 }
+
+/** URL de API de um work item (usada nas relações pai/filho). */
+export function apiWorkItemUrl(id: number | string): string {
+  return `https://dev.azure.com/${ORG}/_apis/wit/workItems/${id}`;
+}
+
+/** URL web (clicável) de um work item, para abrir no portal do Azure DevOps. */
+export function webWorkItemUrl(id: number | string): string {
+  return `https://dev.azure.com/${ORG}/${PROJECT}/_workitems/edit/${id}`;
+}
+
+/** Relação "filho de" — liga a Task criada ao PBI pai. */
+export const REL_PARENT = 'System.LinkTypes.Hierarchy-Reverse';

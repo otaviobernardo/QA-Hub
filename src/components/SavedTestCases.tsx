@@ -70,6 +70,9 @@ export default function SavedTestCases() {
   const [modal, setModal] = useState<ModalState>(null);
   const [saving, setSaving] = useState(false);
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
+  // Seleção em lote (somente casos do próprio usuário podem ser marcados).
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const toggleGroup = (g: string) =>
     setOpenGroups((prev) => {
@@ -79,11 +82,31 @@ export default function SavedTestCases() {
       return next;
     });
 
+  const toggleSelect = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  // Marca/desmarca todos os casos do usuário dentro de um grupo.
+  const toggleGroupSelect = (ids: string[], allSelected: boolean) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (allSelected) next.delete(id);
+        else next.add(id);
+      }
+      return next;
+    });
+
   const load = async (): Promise<void> => {
     setLoading(true);
     setLoadError(false);
     try {
       setCases(await getSavedCases());
+      setSelected(new Set());
     } catch {
       setLoadError(true);
     } finally {
@@ -165,6 +188,26 @@ export default function SavedTestCases() {
     }
   };
 
+  const handleBulkDelete = async (): Promise<void> => {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    if (
+      !window.confirm(
+        `Excluir ${ids.length} caso(s) selecionado(s)? Esta ação não pode ser desfeita.`,
+      )
+    )
+      return;
+    setBulkDeleting(true);
+    try {
+      await Promise.all(ids.map((id) => deleteSavedCase(id)));
+      await load();
+    } catch {
+      window.alert('Não foi possível excluir os casos selecionados.');
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -235,6 +278,33 @@ export default function SavedTestCases() {
         </Filter>
       </div>
 
+      {/* Barra de ações em lote */}
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-selbetti-orange/40 bg-selbetti-orange/10 px-3 py-2 text-sm">
+          <span className="font-medium text-gray-700 dark:text-gray-200">
+            {selected.size} caso{selected.size === 1 ? '' : 's'} selecionado
+            {selected.size === 1 ? '' : 's'}
+          </span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setSelected(new Set())}
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+            >
+              Limpar seleção
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleBulkDelete()}
+              disabled={bulkDeleting}
+              className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {bulkDeleting ? 'Excluindo…' : `Excluir ${selected.size} selecionado(s)`}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Lista */}
       {loading ? (
         <div className="flex justify-center py-16">
@@ -265,6 +335,11 @@ export default function SavedTestCases() {
           {groups.map(([grupo, items]) => {
             const isOpen = openGroups.has(grupo);
             const passed = items.filter((c) => c.status === 'pass').length;
+            const mineIds = items
+              .filter((c) => c.createdBy === uid)
+              .map((c) => c.id);
+            const allMineSelected =
+              mineIds.length > 0 && mineIds.every((id) => selected.has(id));
             return (
               <div
                 key={grupo}
@@ -299,6 +374,20 @@ export default function SavedTestCases() {
                     <table className="w-full text-left text-sm">
                       <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500 dark:bg-gray-900/50 dark:text-gray-400">
                         <tr>
+                          <th className="w-10 px-4 py-2">
+                            {mineIds.length > 0 && (
+                              <input
+                                type="checkbox"
+                                checked={allMineSelected}
+                                onChange={() =>
+                                  toggleGroupSelect(mineIds, allMineSelected)
+                                }
+                                aria-label="Selecionar todos os meus casos do grupo"
+                                title="Selecionar meus casos deste grupo"
+                                className="h-4 w-4 rounded border-gray-300 text-selbetti-green focus:ring-selbetti-green"
+                              />
+                            )}
+                          </th>
                           <th className="px-4 py-2 font-medium">Título</th>
                           <th className="px-4 py-2 font-medium">Tipo</th>
                           <th className="px-4 py-2 font-medium">Módulo</th>
@@ -310,6 +399,17 @@ export default function SavedTestCases() {
                       <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                         {items.map((c) => (
                           <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                            <td className="px-4 py-2">
+                              {c.createdBy === uid && (
+                                <input
+                                  type="checkbox"
+                                  checked={selected.has(c.id)}
+                                  onChange={() => toggleSelect(c.id)}
+                                  aria-label={`Selecionar ${c.titulo}`}
+                                  className="h-4 w-4 rounded border-gray-300 text-selbetti-green focus:ring-selbetti-green"
+                                />
+                              )}
+                            </td>
                             <td className="max-w-xs truncate px-4 py-2 font-medium text-gray-800 dark:text-gray-100">
                               {c.titulo}
                             </td>

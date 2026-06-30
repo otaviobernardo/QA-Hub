@@ -127,7 +127,7 @@ function Overview({ bugs, sprints }: { bugs: Bug[]; sprints: string[] }) {
         <div className="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400">
           {bugs.length > 0 && onlyMine
             ? 'Você ainda não registrou bugs. Desmarque o filtro para ver os de todos.'
-            : 'Nenhum bug registrado ainda. Use a aba Lista de bugs para criar o primeiro.'}
+            : 'Nenhum bug registrado ainda. Use a aba Bugs para criar o primeiro.'}
         </div>
       ) : (
         <>

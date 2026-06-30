@@ -11,11 +11,17 @@ export interface Bug {
   severity: Severity;
   priority: Priority;
   environment: Environment;
+  environmentDetail: string;   // sub-info do ambiente (Dev→branch, Homolog→VM, Prod→cliente)
   status: BugStatus;
   description: string;
   evidence: string;
-  assignee: string;            // nome ou uid do QA responsável
+  assignee: string;            // nome do QA que registrou o bug (automático)
   createdBy: string;           // uid do usuário que criou
+  // Vínculo com o Azure DevOps (preenchido após o push).
+  azureWorkItemId?: number;    // id da Task "BUG | ..." criada no Azure
+  azureParentId?: number;      // id do PBI pai informado no cadastro
+  azureUrl?: string;           // URL web do work item (link clicável)
+  azureSyncedAt?: Date;        // último sync bem-sucedido (push ou pull)
   createdAt: Date;
   updatedAt: Date;
 }

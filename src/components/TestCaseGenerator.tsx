@@ -8,6 +8,8 @@ import { getUserProfile, createSavedCase } from '../lib/db';
 import { generateTestCases, TestCaseGenError } from '../lib/ai';
 import { PROVIDERS, PROVIDER_MAP, type ProviderId } from '../lib/providers';
 import { TIPO_OPTIONS, tipoLabel, tipoBadge } from '../lib/testCaseOptions';
+import { importFromCard, pushMapaDeTestes } from '../lib/cardImport';
+import { AzureError } from '../lib/azure';
 import TestCaseModal, { type TestCaseModalResult } from './TestCaseModal';
 
 /** Caso em branco usado ao adicionar um caso manualmente. */
@@ -59,6 +61,16 @@ export default function TestCaseGenerator() {
   const [adding, setAdding] = useState(false);
   const [savingAll, setSavingAll] = useState(false);
   const [savedAll, setSavedAll] = useState(false);
+  // Importação dos campos a partir de um card do Azure DevOps.
+  const [cardId, setCardId] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState<
+    { type: 'ok' | 'error'; text: string } | null
+  >(null);
+  // Resultado da cópia dos casos para a task "Mapa de testes".
+  const [mapaMsg, setMapaMsg] = useState<
+    { type: 'ok' | 'error'; text: string } | null
+  >(null);
 
   // Provedores que o QA já configurou (na ordem do registro).
   const configured = useMemo(
@@ -80,6 +92,53 @@ export default function TestCaseGenerator() {
       setModel(def.models[0].id);
     }
   }, [configured, provider, model, setProvider, setModel]);
+
+  const handleImport = async (): Promise<void> => {
+    setImportMsg(null);
+    const raw = cardId.trim();
+    if (!raw) {
+      setImportMsg({ type: 'error', text: 'Informe o ID do card (PBI).' });
+      return;
+    }
+    if (!/^\d+$/.test(raw)) {
+      setImportMsg({ type: 'error', text: 'O ID do card deve ser numérico.' });
+      return;
+    }
+    if (!user) return;
+
+    setImporting(true);
+    try {
+      const profile = await getUserProfile(user.uid);
+      const pat = profile?.azurePat?.trim();
+      if (!pat) {
+        setImportMsg({
+          type: 'error',
+          text: 'Configure seu PAT do Azure DevOps em Configurações.',
+        });
+        return;
+      }
+      const data = await importFromCard(pat, raw);
+      setUserStory(data.userStory);
+      setCriteria(data.criteria);
+      if (data.devAnalysis) setDevAnalysis(data.devAnalysis);
+      setImportMsg({
+        type: 'ok',
+        text: data.foundAnalise
+          ? 'User Story, Critérios de Aceite e Análise do Dev importados do card.'
+          : 'User Story e Critérios de Aceite importados. Análise do Dev não encontrada (task filha "Análise") — preencha manualmente se precisar.',
+      });
+    } catch (err) {
+      setImportMsg({
+        type: 'error',
+        text:
+          err instanceof AzureError
+            ? err.message
+            : 'Falha ao buscar o card no Azure DevOps.',
+      });
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const handleGenerate = async (): Promise<void> => {
     setError(null);
@@ -176,6 +235,7 @@ export default function TestCaseGenerator() {
       return;
     }
     setSavingAll(true);
+    setMapaMsg(null);
     try {
       const createdByName = user.displayName?.trim() || user.email || 'QA';
       await Promise.all(
@@ -196,9 +256,49 @@ export default function TestCaseGenerator() {
       setSavedAll(true);
     } catch {
       window.alert('Não foi possível salvar os casos no repositório.');
-    } finally {
       setSavingAll(false);
+      return;
     }
+
+    // Cola os casos na task "Mapa de testes" do card, se houver card vinculado.
+    if (cardId.trim()) {
+      try {
+        const profile = await getUserProfile(user.uid);
+        const pat = profile?.azurePat?.trim();
+        if (!pat) {
+          setMapaMsg({
+            type: 'error',
+            text: 'Para colar no "Mapa de testes", configure seu PAT do Azure em Configurações.',
+          });
+        } else {
+          const ok = await pushMapaDeTestes(
+            pat,
+            cardId.trim(),
+            casesToHtml(cases),
+          );
+          setMapaMsg(
+            ok
+              ? {
+                  type: 'ok',
+                  text: 'Casos também colados na task "Mapa de testes" do card.',
+                }
+              : {
+                  type: 'error',
+                  text: 'Salvo no repositório, mas a task "Mapa de testes" não foi encontrada no card.',
+                },
+          );
+        }
+      } catch (err) {
+        setMapaMsg({
+          type: 'error',
+          text:
+            err instanceof AzureError
+              ? err.message
+              : 'Salvo no repositório, mas falhou ao colar no "Mapa de testes".',
+        });
+      }
+    }
+    setSavingAll(false);
   };
 
   // Salva a edição inline de um caso gerado (apenas os campos do caso).
@@ -222,6 +322,34 @@ export default function TestCaseGenerator() {
     setAdding(false);
     setSavedAll(false);
   };
+
+  // Limpa os casos gerados e os campos de entrada (US, CA, Análise, card).
+  const handleClear = (): void => {
+    if (
+      !window.confirm(
+        'Limpar o título, a User Story, Critérios de Aceite, Análise do Dev e os casos gerados?',
+      )
+    )
+      return;
+    setTitulo('');
+    setUserStory('');
+    setCriteria('');
+    setDevAnalysis('');
+    setCases(null);
+    setCardId('');
+    setError(null);
+    setImportMsg(null);
+    setMapaMsg(null);
+    setSavedAll(false);
+  };
+
+  const hasContent =
+    Boolean(cases && cases.length > 0) ||
+    Boolean(titulo.trim()) ||
+    Boolean(userStory.trim()) ||
+    Boolean(criteria.trim()) ||
+    Boolean(devAnalysis.trim()) ||
+    Boolean(cardId.trim());
 
   return (
     <div className="space-y-6">
@@ -255,6 +383,60 @@ export default function TestCaseGenerator() {
           <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
             Os casos salvos ficam agrupados sob este título no repositório.
           </p>
+        </div>
+
+        {/* Importar campos a partir de um card do Azure DevOps */}
+        <div className="rounded-md border border-selbetti-purple/30 bg-selbetti-purple/5 p-4">
+          <label
+            htmlFor="cardId"
+            className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
+          >
+            Importar do Azure DevOps
+          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              id="cardId"
+              type="text"
+              inputMode="numeric"
+              value={cardId}
+              onChange={(e) => setCardId(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void handleImport();
+                }
+              }}
+              placeholder="ID do PBI (ex: 151171)"
+              className="w-44 rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-selbetti-green focus:ring-2 focus:ring-selbetti-green/30 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500"
+            />
+            <button
+              type="button"
+              onClick={() => void handleImport()}
+              disabled={importing}
+              className="flex items-center gap-2 rounded-md bg-selbetti-purple px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-selbetti-purple/90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {importing && (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+              )}
+              {importing ? 'Buscando…' : 'Buscar do Azure'}
+            </button>
+          </div>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Puxa a <b>User Story</b> e os <b>Critérios de Aceite</b> do card e a{' '}
+            <b>Análise do Dev</b> da task filha “Análise”.
+          </p>
+          {importMsg && (
+            <div
+              role="alert"
+              className={`mt-2 rounded-md px-3 py-2 text-sm ${
+                importMsg.type === 'ok'
+                  ? 'bg-selbetti-green/10 text-selbetti-green dark:text-green-300'
+                  : 'border border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300'
+              }`}
+            >
+              {importMsg.text}
+            </div>
+          )}
         </div>
 
         <div>
@@ -437,17 +619,27 @@ export default function TestCaseGenerator() {
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={handleGenerate}
-          disabled={loading || configured.length === 0}
-          className="flex items-center justify-center gap-2 rounded-md bg-selbetti-green px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-selbetti-green/90 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {loading && (
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-          )}
-          {loading ? 'Gerando…' : 'Gerar casos de teste'}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleGenerate}
+            disabled={loading || configured.length === 0}
+            className="flex items-center justify-center gap-2 rounded-md bg-selbetti-green px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-selbetti-green/90 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loading && (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+            )}
+            {loading ? 'Gerando…' : 'Gerar casos de teste'}
+          </button>
+          <button
+            type="button"
+            onClick={handleClear}
+            disabled={loading || !hasContent}
+            className="rounded-md border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-red-500/10 dark:hover:text-red-400"
+          >
+            Limpar
+          </button>
+        </div>
       </div>
 
       {/* Resultado */}
@@ -496,10 +688,23 @@ export default function TestCaseGenerator() {
                   ? 'Salvo ✓'
                   : savingAll
                     ? 'Salvando…'
-                    : `Salvar ${cases.length} no repositório`}
+                    : 'Salvar no Repositório'}
               </button>
             </div>
           </div>
+
+          {mapaMsg && (
+            <div
+              role="status"
+              className={`rounded-md px-3 py-2 text-sm ${
+                mapaMsg.type === 'ok'
+                  ? 'bg-selbetti-green/10 text-selbetti-green dark:text-green-300'
+                  : 'border border-selbetti-orange/40 bg-selbetti-orange/10 text-gray-700 dark:text-gray-200'
+              }`}
+            >
+              {mapaMsg.text}
+            </div>
+          )}
 
           <div className="space-y-3">
             {cases.map((tc, idx) => (
@@ -659,6 +864,45 @@ function casesToText(cases: TestCase[]): string {
         .join('\n');
     })
     .join('\n\n');
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/** Corpo HTML do caso: charter (exploratório) ou lista de passos. */
+function caseBodyHtml(tc: TestCase): string {
+  if (tc.tipo === 'exploratorio') {
+    return [
+      tc.explore && `<b>EXPLORE:</b> ${escapeHtml(tc.explore)}`,
+      tc.com && `<b>COM:</b> ${escapeHtml(tc.com)}`,
+      tc.para_validar && `<b>PARA VALIDAR:</b> ${escapeHtml(tc.para_validar)}`,
+      tc.e && `<b>E:</b> ${escapeHtml(tc.e)}`,
+    ]
+      .filter(Boolean)
+      .join('<br/>');
+  }
+  if (tc.passos.length === 0) return '';
+  return `<ol>${tc.passos.map((p) => `<li>${escapeHtml(p)}</li>`).join('')}</ol>`;
+}
+
+/** Renderiza os casos como HTML para colar na descrição do work item. */
+function casesToHtml(cases: TestCase[]): string {
+  return cases
+    .map((tc, idx) => {
+      const body = caseBodyHtml(tc);
+      const bodyLabel = tc.tipo === 'exploratorio' ? 'Charter' : 'Passos';
+      return [
+        `<b>Caso ${idx + 1} — [${tipoLabel[tc.tipo]}] ${escapeHtml(tc.titulo)}</b>`,
+        tc.descricao && escapeHtml(tc.descricao),
+        body && `<b>${bodyLabel}:</b><br/>${body}`,
+        `<b>Resultado esperado:</b> ${escapeHtml(tc.resultado_esperado || '—')}`,
+        `<b>CA/RN coberto:</b> ${escapeHtml(tc.ca_coberto || '—')}`,
+      ]
+        .filter(Boolean)
+        .join('<br/>');
+    })
+    .join('<br/><br/>');
 }
 
 function csvCell(value: string): string {

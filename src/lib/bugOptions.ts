@@ -10,6 +10,19 @@ export const STATUSES: BugStatus[] = [
 ];
 export const ENVIRONMENTS: Environment[] = ['Dev', 'Homologação', 'Produção'];
 
+/**
+ * Sub-informação do ambiente: cada ambiente pede um detalhe diferente.
+ * Dev → branch | Homologação → VM/instância | Produção → cliente.
+ */
+export const ENV_DETAIL_META: Record<
+  Environment,
+  { label: string; placeholder: string }
+> = {
+  Dev: { label: 'Branch', placeholder: 'Ex: feature/recuperacao-senha' },
+  'Homologação': { label: 'VM / instância', placeholder: 'Ex: VM182' },
+  'Produção': { label: 'Cliente', placeholder: 'Ex: Nome do cliente' },
+};
+
 /** Classes Tailwind para o badge de severidade. */
 export const severityBadge: Record<Severity, string> = {
   'Crítico': 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300',
