@@ -14,6 +14,7 @@ import {
   PRIORITIES,
   STATUSES,
   ENVIRONMENTS,
+  VM_OPTIONS,
   severityBadge,
   statusBadge,
   priorityBadge,
@@ -39,6 +40,7 @@ interface FormState {
   description: string;
   evidence: string;
   assignee: string;
+  vm: string;
 }
 
 const REQUIRED_FIELDS: (keyof FormState)[] = [
@@ -49,7 +51,7 @@ const REQUIRED_FIELDS: (keyof FormState)[] = [
   'description',
 ];
 
-function initialForm(bug?: Bug): FormState {
+function initialForm(bug?: Bug, defaultAssignee?: string): FormState {
   return {
     title: bug?.title ?? '',
     module: bug?.module ?? '',
@@ -60,13 +62,17 @@ function initialForm(bug?: Bug): FormState {
     status: bug?.status ?? 'Aberto',
     description: bug?.description ?? '',
     evidence: bug?.evidence ?? '',
-    assignee: bug?.assignee ?? '',
+    assignee: bug?.assignee ?? defaultAssignee ?? '',
+    vm: bug?.vm ?? '',
   };
 }
 
 export default function BugModal({ mode, bug, onClose, onSaved }: BugModalProps) {
   const { user } = useAuth();
-  const [form, setForm] = useState<FormState>(initialForm(bug));
+  const displayName = user?.displayName?.trim() || user?.email || '';
+  const [form, setForm] = useState<FormState>(
+    initialForm(bug, mode === 'create' ? displayName : undefined),
+  );
   const [errors, setErrors] = useState<Set<keyof FormState>>(new Set());
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -101,14 +107,17 @@ export default function BugModal({ mode, bug, onClose, onSaved }: BugModalProps)
 
     setSaving(true);
     try {
+      const vmValue = form.environment === 'Homologação' && form.vm ? form.vm : undefined;
       if (mode === 'create') {
         await createBug({
           id: uuidv4(),
           ...form,
+          vm: vmValue,
           createdBy: user.uid,
+          createdByName: user.displayName?.trim() || user.email || '',
         });
       } else if (mode === 'edit' && bug) {
-        await updateBug(bug.id, { ...form });
+        await updateBug(bug.id, { ...form, vm: vmValue });
       }
       onSaved();
       onClose();
@@ -202,9 +211,10 @@ export default function BugModal({ mode, bug, onClose, onSaved }: BugModalProps)
               <Field label="Ambiente">
                 <select
                   value={form.environment}
-                  onChange={(e) =>
-                    setField('environment', e.target.value as Environment)
-                  }
+                  onChange={(e) => {
+                    const env = e.target.value as Environment;
+                    setForm((prev) => ({ ...prev, environment: env, vm: '' }));
+                  }}
                   className={`${inputClass(false)} app-select`}
                 >
                   {ENVIRONMENTS.map((opt) => (
@@ -215,6 +225,23 @@ export default function BugModal({ mode, bug, onClose, onSaved }: BugModalProps)
                 </select>
               </Field>
             </div>
+
+            {form.environment === 'Homologação' && (
+              <Field label="VM">
+                <select
+                  value={form.vm}
+                  onChange={(e) => setField('vm', e.target.value)}
+                  className={`${inputClass(false)} app-select`}
+                >
+                  <option value="">Selecione a VM</option>
+                  {VM_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <Field label="Severidade">
@@ -374,7 +401,11 @@ function ViewBody({ bug }: { bug: Bug }) {
         <Info label="Módulo" value={bug.module} />
         <Info label="Sprint" value={bug.sprint} />
         <Info label="Ambiente" value={bug.environment} />
+        {bug.environment === 'Homologação' && (
+          <Info label="VM" value={bug.vm || '—'} />
+        )}
         <Info label="Responsável" value={bug.assignee} />
+        <Info label="Registrado por" value={bug.createdByName || '—'} />
         <Info label="Criado em" value={dateFmt.format(bug.createdAt)} />
         <Info label="Atualizado em" value={dateFmt.format(bug.updatedAt)} />
       </dl>

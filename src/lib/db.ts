@@ -148,7 +148,9 @@ export async function getBugs(): Promise<Bug[]> {
       description: data.description ?? '',
       evidence: data.evidence ?? '',
       assignee: data.assignee ?? '',
+      vm: typeof data.vm === 'string' && data.vm ? data.vm : undefined,
       createdBy: data.createdBy ?? '',
+      createdByName: typeof data.createdByName === 'string' ? data.createdByName : '',
       createdAt: toDate(data.createdAt),
       updatedAt: toDate(data.updatedAt),
     };

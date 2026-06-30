@@ -1,5 +1,12 @@
 import type { Severity, Priority, BugStatus, Environment } from '../types';
 
+export const VM_OPTIONS = [
+  '172.16.0.182',
+  '172.16.0.178',
+  '172.16.0.196',
+  'skyelab',
+] as const;
+
 export const SEVERITIES: Severity[] = ['Crítico', 'Alto', 'Médio', 'Baixo'];
 export const PRIORITIES: Priority[] = ['Alta', 'Média', 'Baixa'];
 export const STATUSES: BugStatus[] = [
