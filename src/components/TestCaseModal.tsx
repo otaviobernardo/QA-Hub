@@ -4,6 +4,7 @@ import { TIPO_OPTIONS, SAVED_STATUS_LABEL } from '../lib/testCaseOptions';
 
 export interface TestCaseModalResult extends TestCase {
   grupo: string;
+  projeto: string;
   sprint: string;
   modulo: string;
   status: SavedCaseStatus;
@@ -11,7 +12,13 @@ export interface TestCaseModalResult extends TestCase {
 
 interface TestCaseModalProps {
   value: TestCase &
-    Partial<{ grupo: string; sprint: string; modulo: string; status: SavedCaseStatus }>;
+    Partial<{
+      grupo: string;
+      projeto: string;
+      sprint: string;
+      modulo: string;
+      status: SavedCaseStatus;
+    }>;
   /** Mostra os campos de repositório (sprint, módulo, status). */
   withMeta: boolean;
   title: string;
@@ -43,6 +50,7 @@ export default function TestCaseModal({
   const [paraValidar, setParaValidar] = useState(value.para_validar ?? '');
   const [eCampo, setECampo] = useState(value.e ?? '');
   const [grupo, setGrupo] = useState(value.grupo ?? '');
+  const [projeto, setProjeto] = useState(value.projeto ?? '');
   const [sprint, setSprint] = useState(value.sprint ?? '');
   const [modulo, setModulo] = useState(value.modulo ?? '');
   const [status, setStatus] = useState<SavedCaseStatus>(value.status ?? 'pendente');
@@ -66,6 +74,7 @@ export default function TestCaseModal({
       para_validar: paraValidar.trim() || undefined,
       e: eCampo.trim() || undefined,
       grupo: grupo.trim(),
+      projeto: projeto.trim(),
       sprint: sprint.trim(),
       modulo: modulo.trim(),
       status,
@@ -125,15 +134,27 @@ export default function TestCaseModal({
           </div>
 
           {withMeta && (
-            <div>
-              <label className={labelClass}>Título do conjunto</label>
-              <input
-                type="text"
-                value={grupo}
-                onChange={(e) => setGrupo(e.target.value)}
-                placeholder="Ex: Recuperação de senha"
-                className={inputClass}
-              />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className={labelClass}>Título do conjunto (Feature)</label>
+                <input
+                  type="text"
+                  value={grupo}
+                  onChange={(e) => setGrupo(e.target.value)}
+                  placeholder="Ex: Recuperação de senha"
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Projeto</label>
+                <input
+                  type="text"
+                  value={projeto}
+                  onChange={(e) => setProjeto(e.target.value)}
+                  placeholder="Ex: SHARE-4"
+                  className={inputClass}
+                />
+              </div>
             </div>
           )}
 

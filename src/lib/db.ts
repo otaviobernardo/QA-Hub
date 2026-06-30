@@ -369,10 +369,12 @@ export async function getSavedCases(): Promise<SavedTestCase[]> {
       com: optStr(data.com),
       para_validar: optStr(data.para_validar),
       e: optStr(data.e),
+      projeto: typeof data.projeto === 'string' ? data.projeto : '',
       sprint: typeof data.sprint === 'string' ? data.sprint : '',
       modulo: typeof data.modulo === 'string' ? data.modulo : '',
       status,
       tempoMs: typeof data.tempoMs === 'number' ? data.tempoMs : 0,
+      azureCardId: optStr(data.azureCardId),
       createdBy: typeof data.createdBy === 'string' ? data.createdBy : '',
       createdByName:
         typeof data.createdByName === 'string' ? data.createdByName : '',

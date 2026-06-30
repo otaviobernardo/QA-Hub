@@ -90,7 +90,9 @@ export interface WorkItem {
 export function readWorkItem(pat: string, id: number | string): Promise<WorkItem> {
   return callProxy<WorkItem>(pat, {
     method: 'GET',
-    path: `/${ORG}/${PROJECT}/_apis/wit/workitems/${id}`,
+    // Sem o projeto: o ID do work item é único na organização, então ler/editar
+    // por ID funciona para qualquer projeto da org (ex.: QAs em outro projeto).
+    path: `/${ORG}/_apis/wit/workitems/${id}`,
     query: `$expand=all&api-version=${API_VERSION}`,
   });
 }
@@ -103,7 +105,9 @@ export function updateState(
 ): Promise<WorkItem> {
   return callProxy<WorkItem>(pat, {
     method: 'PATCH',
-    path: `/${ORG}/${PROJECT}/_apis/wit/workitems/${id}`,
+    // Sem o projeto: o ID do work item é único na organização, então ler/editar
+    // por ID funciona para qualquer projeto da org (ex.: QAs em outro projeto).
+    path: `/${ORG}/_apis/wit/workitems/${id}`,
     query: `api-version=${API_VERSION}`,
     contentType: 'application/json-patch+json',
     body: [{ op: 'add', path: '/fields/System.State', value: state }],
@@ -123,7 +127,9 @@ export function updateFields(
   }));
   return callProxy<WorkItem>(pat, {
     method: 'PATCH',
-    path: `/${ORG}/${PROJECT}/_apis/wit/workitems/${id}`,
+    // Sem o projeto: o ID do work item é único na organização, então ler/editar
+    // por ID funciona para qualquer projeto da org (ex.: QAs em outro projeto).
+    path: `/${ORG}/_apis/wit/workitems/${id}`,
     query: `api-version=${API_VERSION}`,
     contentType: 'application/json-patch+json',
     body: ops,
@@ -138,7 +144,9 @@ export function addComment(
 ): Promise<WorkItem> {
   return callProxy<WorkItem>(pat, {
     method: 'PATCH',
-    path: `/${ORG}/${PROJECT}/_apis/wit/workitems/${id}`,
+    // Sem o projeto: o ID do work item é único na organização, então ler/editar
+    // por ID funciona para qualquer projeto da org (ex.: QAs em outro projeto).
+    path: `/${ORG}/_apis/wit/workitems/${id}`,
     query: `api-version=${API_VERSION}`,
     contentType: 'application/json-patch+json',
     body: [{ op: 'add', path: '/fields/System.History', value: text }],

@@ -102,6 +102,23 @@ export interface CardImport {
   criteria: string;
   devAnalysis: string;
   foundAnalise: boolean;
+  /** Projeto = raiz do Area Path (ex.: "SHARE-4"). */
+  projeto: string;
+  /** Sprint = folha do Iteration Path (ex.: "[SCHERER] Integração Autentique"). */
+  sprint: string;
+  /** ID do PBI importado. */
+  cardId: string;
+}
+
+/** Raiz de um path do Azure (Area/Iteration): primeiro segmento. */
+function pathRoot(p: string): string {
+  return p.split('\\')[0]?.trim() ?? '';
+}
+
+/** Folha de um path do Azure (Area/Iteration): último segmento. */
+function pathLeaf(p: string): string {
+  const parts = p.split('\\');
+  return parts[parts.length - 1]?.trim() ?? '';
 }
 
 export async function importFromCard(
@@ -137,5 +154,8 @@ export async function importFromCard(
     criteria,
     devAnalysis,
     foundAnalise,
+    projeto: pathRoot(field(pbi, 'System.AreaPath')),
+    sprint: pathLeaf(field(pbi, 'System.IterationPath')),
+    cardId: String(cardId),
   };
 }
