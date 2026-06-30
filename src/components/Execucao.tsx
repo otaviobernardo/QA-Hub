@@ -17,6 +17,19 @@ function formatTime(ms: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
 }
 
+// Cronômetros em andamento sobrevivem a troca de aba/reload via localStorage.
+const RUNNING_KEY = 'qa-hub-execucao-running';
+
+function loadRunning(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(RUNNING_KEY);
+    if (raw) return JSON.parse(raw) as Record<string, number>;
+  } catch {
+    // localStorage indisponível ou JSON inválido — começa vazio.
+  }
+  return {};
+}
+
 export default function Execucao() {
   const [cases, setCases] = useState<SavedTestCase[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,8 +37,18 @@ export default function Execucao() {
 
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   // caseId -> instante de início do cronômetro (epoch ms). Ausente = parado.
-  const [running, setRunning] = useState<Record<string, number>>({});
+  // Persistido no localStorage para sobreviver a troca de aba/reload (o startedAt
+  // é absoluto, então a contagem continua correta ao remontar).
+  const [running, setRunning] = useState<Record<string, number>>(loadRunning);
   const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(RUNNING_KEY, JSON.stringify(running));
+    } catch {
+      // localStorage indisponível — cronômetros seguem só em memória.
+    }
+  }, [running]);
 
   const load = async (): Promise<void> => {
     setLoading(true);

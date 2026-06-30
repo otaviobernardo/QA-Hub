@@ -55,23 +55,36 @@ function childIdsOf(item: WorkItem): number[] {
     .filter((x): x is number => x !== null);
 }
 
+export interface MapaTask {
+  id: number;
+  /** Descrição atual (HTML) da task — para decidir sobre sobrescrever. */
+  currentHtml: string;
+}
+
 /**
- * Cola o conteúdo (HTML) na descrição da Task filha "Mapa de testes" do card.
- * Retorna false se a task não for encontrada.
+ * Localiza a Task filha "Mapa de testes" do card e devolve seu id + descrição
+ * atual. Retorna null se não encontrar (sem escrever nada).
  */
-export async function pushMapaDeTestes(
+export async function findMapaDeTestes(
   pat: string,
   cardId: number | string,
-  html: string,
-): Promise<boolean> {
+): Promise<MapaTask | null> {
   const pbi = await readWorkItem(pat, cardId);
   const ids = childIdsOf(pbi);
-  if (ids.length === 0) return false;
+  if (ids.length === 0) return null;
   const children = await Promise.all(ids.map((id) => readWorkItem(pat, id)));
   const mapa = children.find(isMapaDeTestes);
-  if (!mapa) return false;
-  await updateFields(pat, mapa.id, { 'System.Description': html });
-  return true;
+  if (!mapa) return null;
+  return { id: mapa.id, currentHtml: field(mapa, 'System.Description') };
+}
+
+/** Escreve o HTML na descrição da task "Mapa de testes". */
+export async function writeMapaDeTestes(
+  pat: string,
+  id: number,
+  html: string,
+): Promise<void> {
+  await updateFields(pat, id, { 'System.Description': html });
 }
 
 export interface CardImport {

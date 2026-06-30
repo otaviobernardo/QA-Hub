@@ -199,8 +199,17 @@ export default function SavedTestCases() {
       return;
     setBulkDeleting(true);
     try {
-      await Promise.all(ids.map((id) => deleteSavedCase(id)));
+      // allSettled: reporta exatamente quantos falharam (exclusão parcial).
+      const results = await Promise.allSettled(
+        ids.map((id) => deleteSavedCase(id)),
+      );
+      const failed = results.filter((r) => r.status === 'rejected').length;
       await load();
+      if (failed > 0) {
+        window.alert(
+          `${ids.length - failed} de ${ids.length} caso(s) excluído(s). ${failed} falhou(aram).`,
+        );
+      }
     } catch {
       window.alert('Não foi possível excluir os casos selecionados.');
     } finally {
@@ -335,11 +344,9 @@ export default function SavedTestCases() {
           {groups.map(([grupo, items]) => {
             const isOpen = openGroups.has(grupo);
             const passed = items.filter((c) => c.status === 'pass').length;
-            const mineIds = items
-              .filter((c) => c.createdBy === uid)
-              .map((c) => c.id);
-            const allMineSelected =
-              mineIds.length > 0 && mineIds.every((id) => selected.has(id));
+            const groupIds = items.map((c) => c.id);
+            const allSelected =
+              groupIds.length > 0 && groupIds.every((id) => selected.has(id));
             return (
               <div
                 key={grupo}
@@ -375,15 +382,15 @@ export default function SavedTestCases() {
                       <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500 dark:bg-gray-900/50 dark:text-gray-400">
                         <tr>
                           <th className="w-10 px-4 py-2">
-                            {mineIds.length > 0 && (
+                            {groupIds.length > 0 && (
                               <input
                                 type="checkbox"
-                                checked={allMineSelected}
+                                checked={allSelected}
                                 onChange={() =>
-                                  toggleGroupSelect(mineIds, allMineSelected)
+                                  toggleGroupSelect(groupIds, allSelected)
                                 }
-                                aria-label="Selecionar todos os meus casos do grupo"
-                                title="Selecionar meus casos deste grupo"
+                                aria-label="Selecionar todos os casos do grupo"
+                                title="Selecionar todos os casos deste grupo"
                                 className="h-4 w-4 rounded border-gray-300 text-selbetti-green focus:ring-selbetti-green"
                               />
                             )}
@@ -400,15 +407,13 @@ export default function SavedTestCases() {
                         {items.map((c) => (
                           <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
                             <td className="px-4 py-2">
-                              {c.createdBy === uid && (
-                                <input
-                                  type="checkbox"
-                                  checked={selected.has(c.id)}
-                                  onChange={() => toggleSelect(c.id)}
-                                  aria-label={`Selecionar ${c.titulo}`}
-                                  className="h-4 w-4 rounded border-gray-300 text-selbetti-green focus:ring-selbetti-green"
-                                />
-                              )}
+                              <input
+                                type="checkbox"
+                                checked={selected.has(c.id)}
+                                onChange={() => toggleSelect(c.id)}
+                                aria-label={`Selecionar ${c.titulo}`}
+                                className="h-4 w-4 rounded border-gray-300 text-selbetti-green focus:ring-selbetti-green"
+                              />
                             </td>
                             <td className="max-w-xs truncate px-4 py-2 font-medium text-gray-800 dark:text-gray-100">
                               {c.titulo}
@@ -438,17 +443,15 @@ export default function SavedTestCases() {
                                 >
                                   <PencilIcon />
                                 </button>
-                                {c.createdBy === uid && (
-                                  <button
-                                    type="button"
-                                    onClick={() => void handleDelete(c)}
-                                    className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/15"
-                                    aria-label="Excluir"
-                                    title="Excluir"
-                                  >
-                                    <TrashIcon />
-                                  </button>
-                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => void handleDelete(c)}
+                                  className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/15"
+                                  aria-label="Excluir"
+                                  title="Excluir"
+                                >
+                                  <TrashIcon />
+                                </button>
                               </div>
                             </td>
                           </tr>

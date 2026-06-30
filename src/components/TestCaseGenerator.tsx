@@ -8,7 +8,12 @@ import { getUserProfile, createSavedCase } from '../lib/db';
 import { generateTestCases, TestCaseGenError } from '../lib/ai';
 import { PROVIDERS, PROVIDER_MAP, type ProviderId } from '../lib/providers';
 import { TIPO_OPTIONS, tipoLabel, tipoBadge } from '../lib/testCaseOptions';
-import { importFromCard, pushMapaDeTestes } from '../lib/cardImport';
+import {
+  importFromCard,
+  findMapaDeTestes,
+  writeMapaDeTestes,
+  htmlToText,
+} from '../lib/cardImport';
 import { AzureError } from '../lib/azure';
 import TestCaseModal, { type TestCaseModalResult } from './TestCaseModal';
 
@@ -71,6 +76,7 @@ export default function TestCaseGenerator() {
   const [mapaMsg, setMapaMsg] = useState<
     { type: 'ok' | 'error'; text: string } | null
   >(null);
+  const [mapaPushing, setMapaPushing] = useState(false);
 
   // Provedores que o QA já configurou (na ordem do registro).
   const configured = useMemo(
@@ -105,6 +111,15 @@ export default function TestCaseGenerator() {
       return;
     }
     if (!user) return;
+    // Evita apagar conteúdo já digitado sem aviso.
+    if (
+      (userStory.trim() || criteria.trim() || devAnalysis.trim()) &&
+      !window.confirm(
+        'Isso vai substituir a User Story, os Critérios de Aceite e a Análise do Dev já preenchidos. Continuar?',
+      )
+    ) {
+      return;
+    }
 
     setImporting(true);
     try {
@@ -262,43 +277,64 @@ export default function TestCaseGenerator() {
 
     // Cola os casos na task "Mapa de testes" do card, se houver card vinculado.
     if (cardId.trim()) {
-      try {
-        const profile = await getUserProfile(user.uid);
-        const pat = profile?.azurePat?.trim();
-        if (!pat) {
-          setMapaMsg({
-            type: 'error',
-            text: 'Para colar no "Mapa de testes", configure seu PAT do Azure em Configurações.',
-          });
-        } else {
-          const ok = await pushMapaDeTestes(
-            pat,
-            cardId.trim(),
-            casesToHtml(cases),
-          );
-          setMapaMsg(
-            ok
-              ? {
-                  type: 'ok',
-                  text: 'Casos também colados na task "Mapa de testes" do card.',
-                }
-              : {
-                  type: 'error',
-                  text: 'Salvo no repositório, mas a task "Mapa de testes" não foi encontrada no card.',
-                },
-          );
-        }
-      } catch (err) {
-        setMapaMsg({
-          type: 'error',
-          text:
-            err instanceof AzureError
-              ? err.message
-              : 'Salvo no repositório, mas falhou ao colar no "Mapa de testes".',
-        });
-      }
+      await runMapaPush();
     }
     setSavingAll(false);
+  };
+
+  // Cola os casos na task "Mapa de testes"; pergunta antes de sobrescrever conteúdo.
+  // Reutilizável: chamado no salvar e no botão "tentar de novo".
+  const runMapaPush = async (): Promise<void> => {
+    if (!user || !cases || cases.length === 0 || !cardId.trim()) return;
+    setMapaMsg(null);
+    setMapaPushing(true);
+    try {
+      const profile = await getUserProfile(user.uid);
+      const pat = profile?.azurePat?.trim();
+      if (!pat) {
+        setMapaMsg({
+          type: 'error',
+          text: 'Para colar no "Mapa de testes", configure seu PAT do Azure em Configurações.',
+        });
+        return;
+      }
+      const mapa = await findMapaDeTestes(pat, cardId.trim());
+      if (!mapa) {
+        setMapaMsg({
+          type: 'error',
+          text: 'A task "Mapa de testes" não foi encontrada no card.',
+        });
+        return;
+      }
+      // Se já houver conteúdo, confirma antes de sobrescrever.
+      if (
+        htmlToText(mapa.currentHtml).trim().length > 0 &&
+        !window.confirm(
+          'A task "Mapa de testes" já tem conteúdo. Substituir pelos casos atuais?',
+        )
+      ) {
+        setMapaMsg({
+          type: 'error',
+          text: 'Colagem cancelada — a task "Mapa de testes" já tinha conteúdo.',
+        });
+        return;
+      }
+      await writeMapaDeTestes(pat, mapa.id, casesToHtml(cases));
+      setMapaMsg({
+        type: 'ok',
+        text: 'Casos colados na task "Mapa de testes" do card.',
+      });
+    } catch (err) {
+      setMapaMsg({
+        type: 'error',
+        text:
+          err instanceof AzureError
+            ? err.message
+            : 'Falhou ao colar no "Mapa de testes".',
+      });
+    } finally {
+      setMapaPushing(false);
+    }
   };
 
   // Salva a edição inline de um caso gerado (apenas os campos do caso).
@@ -696,13 +732,23 @@ export default function TestCaseGenerator() {
           {mapaMsg && (
             <div
               role="status"
-              className={`rounded-md px-3 py-2 text-sm ${
+              className={`flex flex-wrap items-center justify-between gap-2 rounded-md px-3 py-2 text-sm ${
                 mapaMsg.type === 'ok'
                   ? 'bg-selbetti-green/10 text-selbetti-green dark:text-green-300'
                   : 'border border-selbetti-orange/40 bg-selbetti-orange/10 text-gray-700 dark:text-gray-200'
               }`}
             >
-              {mapaMsg.text}
+              <span>{mapaMsg.text}</span>
+              {mapaMsg.type === 'error' && cardId.trim() && (
+                <button
+                  type="button"
+                  onClick={() => void runMapaPush()}
+                  disabled={mapaPushing}
+                  className="shrink-0 rounded-md border border-selbetti-orange px-3 py-1 text-xs font-semibold text-selbetti-orange transition-colors hover:bg-selbetti-orange/20 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {mapaPushing ? 'Colando…' : 'Tentar colar no Mapa de testes'}
+                </button>
+              )}
             </div>
           )}
 
