@@ -15,7 +15,9 @@ export interface Bug {
   description: string;
   evidence: string;
   assignee: string;            // nome ou uid do QA responsável
+  vm?: string;                 // VM usada (somente quando environment === 'Homologação')
   createdBy: string;           // uid do usuário que criou
+  createdByName: string;       // nome de exibição do criador
   createdAt: Date;
   updatedAt: Date;
 }
