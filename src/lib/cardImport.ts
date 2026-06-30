@@ -59,11 +59,14 @@ export interface MapaTask {
   id: number;
   /** Descrição atual (HTML) da task — para decidir sobre sobrescrever. */
   currentHtml: string;
+  /** Estado atual no Azure (ex.: New | Committed | Done). */
+  state: string;
 }
 
 /**
- * Localiza a Task filha "Mapa de testes" do card e devolve seu id + descrição
- * atual. Retorna null se não encontrar (sem escrever nada).
+ * Localiza a Task filha "Mapa de testes" do card e devolve id + descrição atual
+ * + estado. Havendo mais de uma, prefere a que NÃO está finalizada (Done), para
+ * não escrever numa task já encerrada. Retorna null se não achar.
  */
 export async function findMapaDeTestes(
   pat: string,
@@ -73,9 +76,15 @@ export async function findMapaDeTestes(
   const ids = childIdsOf(pbi);
   if (ids.length === 0) return null;
   const children = await Promise.all(ids.map((id) => readWorkItem(pat, id)));
-  const mapa = children.find(isMapaDeTestes);
-  if (!mapa) return null;
-  return { id: mapa.id, currentHtml: field(mapa, 'System.Description') };
+  const matches = children.filter(isMapaDeTestes);
+  if (matches.length === 0) return null;
+  const active =
+    matches.find((m) => field(m, 'System.State') !== 'Done') ?? matches[0];
+  return {
+    id: active.id,
+    currentHtml: field(active, 'System.Description'),
+    state: field(active, 'System.State'),
+  };
 }
 
 /** Escreve o HTML na descrição da task "Mapa de testes". */

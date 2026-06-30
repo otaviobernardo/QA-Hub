@@ -38,6 +38,13 @@ function toDate(value: unknown): Date {
   return new Date();
 }
 
+/** Remove chaves com valor undefined — o Firestore rejeita undefined. */
+function stripUndefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, v]) => v !== undefined),
+  ) as Partial<T>;
+}
+
 /* ------------------------------------------------------------------ */
 /* Perfil do usuário                                                  */
 /* ------------------------------------------------------------------ */
@@ -378,8 +385,10 @@ export async function getSavedCases(): Promise<SavedTestCase[]> {
 /** Cria um caso de teste no repositório. O id (UUID) vira o id do documento. */
 export async function createSavedCase(item: NewSavedCase): Promise<void> {
   const { id, ...rest } = item;
+  // setDoc com id do cliente = upsert: re-salvar o mesmo caso atualiza o doc
+  // (em vez de duplicar). stripUndefined evita erro com campos opcionais ausentes.
   await setDoc(doc(db, TEST_CASES, id), {
-    ...rest,
+    ...stripUndefined(rest),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -391,7 +400,7 @@ export async function updateSavedCase(
   changes: SavedCaseUpdate,
 ): Promise<void> {
   await updateDoc(doc(db, TEST_CASES, id), {
-    ...changes,
+    ...stripUndefined(changes),
     updatedAt: serverTimestamp(),
   });
 }
