@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type {
   Bug,
@@ -7,16 +7,13 @@ import type {
   BugStatus,
   Environment,
 } from '../types';
-import { createBug, updateBug, getUserProfile } from '../lib/db';
+import { createBug, updateBug } from '../lib/db';
 import { useAuth } from '../context/AuthContext';
-import { AzureError } from '../lib/azure';
-import { pushNewBug, pushBugStatus } from '../lib/bugSync';
 import {
   SEVERITIES,
   PRIORITIES,
   STATUSES,
   ENVIRONMENTS,
-  ENV_DETAIL_META,
   severityBadge,
   statusBadge,
   priorityBadge,
@@ -38,16 +35,17 @@ interface FormState {
   severity: Severity;
   priority: Priority;
   environment: Environment;
-  environmentDetail: string;
   status: BugStatus;
   description: string;
   evidence: string;
+  assignee: string;
 }
 
 const REQUIRED_FIELDS: (keyof FormState)[] = [
   'title',
   'module',
   'sprint',
+  'assignee',
   'description',
 ];
 
@@ -59,34 +57,21 @@ function initialForm(bug?: Bug): FormState {
     severity: bug?.severity ?? 'Médio',
     priority: bug?.priority ?? 'Média',
     environment: bug?.environment ?? 'Homologação',
-    environmentDetail: bug?.environmentDetail ?? '',
     status: bug?.status ?? 'Aberto',
     description: bug?.description ?? '',
     evidence: bug?.evidence ?? '',
+    assignee: bug?.assignee ?? '',
   };
 }
 
 export default function BugModal({ mode, bug, onClose, onSaved }: BugModalProps) {
   const { user } = useAuth();
   const [form, setForm] = useState<FormState>(initialForm(bug));
-  const [parentPbi, setParentPbi] = useState<string>(
-    bug?.azureParentId ? String(bug.azureParentId) : '',
-  );
   const [errors, setErrors] = useState<Set<keyof FormState>>(new Set());
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  // Sincronização com o Azure (best-effort): aviso não-bloqueante.
-  const [azureWarn, setAzureWarn] = useState<string | null>(null);
-  // Marca que o bug já foi salvo no Firestore (evita duplicar ao re-tentar o sync).
-  const [savedToDb, setSavedToDb] = useState(false);
-  // Id estável do documento (mesmo entre re-tentativas de sincronização).
-  const idRef = useRef(bug?.id ?? uuidv4());
 
   const isView = mode === 'view';
-  // Responsável automático: nome de quem está cadastrando (não editável).
-  const currentUserName = user?.displayName?.trim() || user?.email || 'QA';
-  // Em edição, mantém quem registrou; em criação, é o usuário atual.
-  const responsavel = mode === 'edit' ? (bug?.assignee ?? currentUserName) : currentUserName;
 
   const setField = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -111,83 +96,24 @@ export default function BugModal({ mode, bug, onClose, onSaved }: BugModalProps)
   const handleSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     setSaveError(null);
-    setAzureWarn(null);
     if (!user) return;
     if (!validate()) return;
 
-    const parentRaw = parentPbi.trim();
-    if (parentRaw && !/^\d+$/.test(parentRaw)) {
-      setSaveError('O ID do PBI pai deve ser numérico (ex: 12345).');
-      return;
-    }
-    const parsedParent = parentRaw ? Number(parentRaw) : undefined;
-
     setSaving(true);
-    const id = idRef.current;
-
-    // 1) Persiste no Firestore (fonte da verdade). Só na primeira vez.
-    if (!savedToDb) {
-      try {
-        if (mode === 'create') {
-          await createBug({
-            id,
-            ...form,
-            assignee: responsavel,
-            azureParentId: parsedParent,
-            createdBy: user.uid,
-          });
-        } else if (mode === 'edit' && bug) {
-          await updateBug(id, {
-            ...form,
-            assignee: responsavel,
-            azureParentId: parsedParent,
-          });
-        }
-        setSavedToDb(true);
-        onSaved();
-      } catch {
-        setSaveError('Não foi possível salvar o bug. Tente novamente.');
-        setSaving(false);
-        return;
-      }
-    }
-
-    // 2) Sincroniza com o Azure (best-effort). Sem PAT, apenas fecha.
     try {
-      const profile = await getUserProfile(user.uid);
-      const pat = profile?.azurePat?.trim();
-      if (!pat) {
-        onClose();
-        return;
-      }
-
-      const existingWorkItemId = bug?.azureWorkItemId;
-      if (existingWorkItemId) {
-        // Já vinculado: empurra o status atual e marca o sync.
-        await pushBugStatus(pat, existingWorkItemId, form.status);
-        await updateBug(id, { azureSyncedAt: new Date() });
-      } else {
-        // Sem vínculo: cria a Task "BUG | ..." no Azure e grava o vínculo.
-        const bugForAzure: Bug = {
-          id,
+      if (mode === 'create') {
+        await createBug({
+          id: uuidv4(),
           ...form,
-          assignee: responsavel,
-          azureParentId: parsedParent,
-          createdBy: bug?.createdBy ?? user.uid,
-          createdAt: bug?.createdAt ?? new Date(),
-          updatedAt: new Date(),
-        };
-        const link = await pushNewBug(pat, bugForAzure);
-        await updateBug(id, link);
+          createdBy: user.uid,
+        });
+      } else if (mode === 'edit' && bug) {
+        await updateBug(bug.id, { ...form });
       }
       onSaved();
       onClose();
-    } catch (err) {
-      const msg =
-        err instanceof AzureError
-          ? err.message
-          : 'Falha ao sincronizar com o Azure DevOps.';
-      setAzureWarn(msg);
+    } catch {
+      setSaveError('Não foi possível salvar o bug. Tente novamente.');
       setSaving(false);
     }
   };
@@ -265,6 +191,14 @@ export default function BugModal({ mode, bug, onClose, onSaved }: BugModalProps)
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Responsável" required error={errors.has('assignee')}>
+                <input
+                  type="text"
+                  value={form.assignee}
+                  onChange={(e) => setField('assignee', e.target.value)}
+                  className={inputClass(errors.has('assignee'))}
+                />
+              </Field>
               <Field label="Ambiente">
                 <select
                   value={form.environment}
@@ -280,42 +214,7 @@ export default function BugModal({ mode, bug, onClose, onSaved }: BugModalProps)
                   ))}
                 </select>
               </Field>
-              <Field label={ENV_DETAIL_META[form.environment].label}>
-                <input
-                  type="text"
-                  value={form.environmentDetail}
-                  onChange={(e) => setField('environmentDetail', e.target.value)}
-                  placeholder={ENV_DETAIL_META[form.environment].placeholder}
-                  className={inputClass(false)}
-                />
-              </Field>
             </div>
-
-            <Field label="Responsável">
-              <div className="flex items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-200">
-                <span className="font-medium">{responsavel}</span>
-                <span className="text-xs text-gray-400 dark:text-gray-500">
-                  (preenchido automaticamente)
-                </span>
-              </div>
-            </Field>
-
-            <Field label="PBI pai no Azure (opcional)">
-              <input
-                type="text"
-                inputMode="numeric"
-                value={parentPbi}
-                onChange={(e) => setParentPbi(e.target.value)}
-                placeholder="Ex: 12345 — a Task 'BUG | …' será criada como filha desse PBI"
-                disabled={Boolean(bug?.azureWorkItemId)}
-                className={`${inputClass(false)} disabled:opacity-60`}
-              />
-              <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                {bug?.azureWorkItemId
-                  ? `Vinculado ao work item #${bug.azureWorkItemId}.`
-                  : 'Se você tiver um PAT configurado, ao salvar criamos a Task no Azure. Sem PBI pai, ela é criada sem vínculo.'}
-              </p>
-            </Field>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <Field label="Severidade">
@@ -391,16 +290,6 @@ export default function BugModal({ mode, bug, onClose, onSaved }: BugModalProps)
                 {saveError}
               </div>
             )}
-            {azureWarn && (
-              <div
-                role="alert"
-                className="rounded-md border border-selbetti-orange/40 bg-selbetti-orange/10 px-3 py-2 text-sm text-gray-700 dark:text-gray-200"
-              >
-                <span className="font-semibold">Bug salvo</span>, mas não
-                sincronizou com o Azure: {azureWarn} Você pode fechar e tentar de
-                novo depois, ou repetir agora.
-              </div>
-            )}
 
             <div className="flex justify-end gap-2 border-t border-gray-100 pt-4 dark:border-gray-700">
               <button
@@ -408,20 +297,14 @@ export default function BugModal({ mode, bug, onClose, onSaved }: BugModalProps)
                 onClick={onClose}
                 className="rounded-md px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
               >
-                {savedToDb ? 'Fechar' : 'Cancelar'}
+                Cancelar
               </button>
               <button
                 type="submit"
                 disabled={saving}
                 className="rounded-md bg-selbetti-green px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-selbetti-green/90 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {saving
-                  ? 'Salvando…'
-                  : savedToDb
-                    ? 'Tentar sincronizar de novo'
-                    : mode === 'create'
-                      ? 'Criar bug'
-                      : 'Salvar alterações'}
+                {saving ? 'Salvando…' : mode === 'create' ? 'Criar bug' : 'Salvar alterações'}
               </button>
             </div>
           </form>
@@ -491,10 +374,6 @@ function ViewBody({ bug }: { bug: Bug }) {
         <Info label="Módulo" value={bug.module} />
         <Info label="Sprint" value={bug.sprint} />
         <Info label="Ambiente" value={bug.environment} />
-        <Info
-          label={ENV_DETAIL_META[bug.environment].label}
-          value={bug.environmentDetail}
-        />
         <Info label="Responsável" value={bug.assignee} />
         <Info label="Criado em" value={dateFmt.format(bug.createdAt)} />
         <Info label="Atualizado em" value={dateFmt.format(bug.updatedAt)} />
@@ -517,35 +396,6 @@ function ViewBody({ bug }: { bug: Bug }) {
           {bug.evidence || '—'}
         </dd>
       </div>
-
-      {bug.azureWorkItemId && (
-        <div className="border-t border-gray-100 pt-3 dark:border-gray-700">
-          <dt className="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-            Azure DevOps
-          </dt>
-          <dd className="mt-1 text-sm">
-            {bug.azureUrl ? (
-              <a
-                href={bug.azureUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-medium text-selbetti-purple underline hover:opacity-80"
-              >
-                Abrir Task #{bug.azureWorkItemId}
-              </a>
-            ) : (
-              <span className="text-gray-700 dark:text-gray-300">
-                Work item #{bug.azureWorkItemId}
-              </span>
-            )}
-            {bug.azureSyncedAt && (
-              <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">
-                · sincronizado em {dateFmt.format(bug.azureSyncedAt)}
-              </span>
-            )}
-          </dd>
-        </div>
-      )}
 
       <p className="border-t border-gray-100 pt-3 text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500">
         ID: {bug.id}
