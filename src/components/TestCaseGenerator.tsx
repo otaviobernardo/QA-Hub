@@ -89,6 +89,9 @@ export default function TestCaseGenerator() {
   );
   const [doneModal, setDoneModal] = useState<{ mapaId: number } | null>(null);
   const [azureBusy, setAzureBusy] = useState(false);
+  // Confirmações (substituem window.confirm) do import e do limpar.
+  const [showImportConfirm, setShowImportConfirm] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   // Provedores que o QA já configurou (na ordem do registro).
   const configured = useMemo(
@@ -111,7 +114,7 @@ export default function TestCaseGenerator() {
     }
   }, [configured, provider, model, setProvider, setModel]);
 
-  const handleImport = async (): Promise<void> => {
+  const handleImport = (): void => {
     setImportMsg(null);
     const raw = cardId.trim();
     if (!raw) {
@@ -123,16 +126,17 @@ export default function TestCaseGenerator() {
       return;
     }
     if (!user) return;
-    // Evita apagar conteúdo já digitado sem aviso.
-    if (
-      (userStory.trim() || criteria.trim() || devAnalysis.trim()) &&
-      !window.confirm(
-        'Isso vai substituir a User Story, os Critérios de Aceite e a Análise do Dev já preenchidos. Continuar?',
-      )
-    ) {
+    // Evita apagar conteúdo já digitado sem aviso — confirma via modal.
+    if (userStory.trim() || criteria.trim() || devAnalysis.trim()) {
+      setShowImportConfirm(true);
       return;
     }
+    void runImport();
+  };
 
+  const runImport = async (): Promise<void> => {
+    if (!user) return;
+    const raw = cardId.trim();
     setImporting(true);
     try {
       const profile = await getUserProfile(user.uid);
@@ -238,7 +242,10 @@ export default function TestCaseGenerator() {
       if (cardId.trim() && pat) {
         try {
           const mapa = await findMapaDeTestes(pat, cardId.trim());
-          if (mapa) setCommittedModal({ mapaId: mapa.id });
+          // Só oferece mover para Committed se ainda não estiver em Committed/Done.
+          if (mapa && mapa.state !== 'Committed' && mapa.state !== 'Done') {
+            setCommittedModal({ mapaId: mapa.id });
+          }
         } catch {
           // silencioso: falha ao localizar o Mapa não bloqueia a geração.
         }
@@ -321,12 +328,20 @@ export default function TestCaseGenerator() {
           });
         } else {
           const mapa = await findMapaDeTestes(pat, cardId.trim());
-          if (mapa) setDoneModal({ mapaId: mapa.id });
-          else
+          if (!mapa) {
             setMapaMsg({
               type: 'error',
               text: 'Casos salvos, mas a task filha "Mapa de testes" não foi encontrada no card.',
             });
+          } else if (mapa.state === 'Done') {
+            // Já está em Done: não abre a modal de novo.
+            setMapaMsg({
+              type: 'ok',
+              text: `Casos salvos. A task "Mapa de testes" (#${mapa.id}) já está em Done.`,
+            });
+          } else {
+            setDoneModal({ mapaId: mapa.id });
+          }
         }
       } catch (err) {
         setMapaMsg({
@@ -446,13 +461,7 @@ export default function TestCaseGenerator() {
   };
 
   // Limpa os casos gerados e os campos de entrada (US, CA, Análise, card).
-  const handleClear = (): void => {
-    if (
-      !window.confirm(
-        'Limpar o título, a User Story, Critérios de Aceite, Análise do Dev e os casos gerados?',
-      )
-    )
-      return;
+  const doClear = (): void => {
     setTitulo('');
     setSquad('');
     setSprint('');
@@ -466,6 +475,7 @@ export default function TestCaseGenerator() {
     setImportMsg(null);
     setMapaMsg(null);
     setSavedAll(false);
+    setShowClearConfirm(false);
   };
 
   const hasContent =
@@ -823,7 +833,7 @@ export default function TestCaseGenerator() {
           </button>
           <button
             type="button"
-            onClick={handleClear}
+            onClick={() => setShowClearConfirm(true)}
             disabled={loading || !hasContent}
             className="rounded-md border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-red-500/10 dark:hover:text-red-400"
           >
@@ -1021,9 +1031,8 @@ export default function TestCaseGenerator() {
               para <b>Committed</b>? Ele será movido no seu nome.
             </>
           }
-          confirmLabel="Sim"
-          cancelLabel="Não"
-          tone="purple"
+          confirmLabel="Sim, mover"
+          cancelLabel="Não, cancelar"
           busy={azureBusy}
           onConfirm={() => void confirmCommitted()}
           onCancel={() => setCommittedModal(null)}
@@ -1040,11 +1049,36 @@ export default function TestCaseGenerator() {
               salvos no repositório.)
             </>
           }
-          confirmLabel="OK"
-          cancelLabel="✕"
+          confirmLabel="Sim, mover"
+          cancelLabel="Não, cancelar"
           busy={azureBusy}
           onConfirm={() => void confirmDone()}
           onCancel={() => setDoneModal(null)}
+        />
+      )}
+
+      {showImportConfirm && (
+        <ConfirmModal
+          title="Substituir campos"
+          message="Isso vai substituir a User Story, os Critérios de Aceite e a Análise do Dev já preenchidos. Continuar?"
+          confirmLabel="Ok"
+          cancelLabel="Cancelar"
+          onConfirm={() => {
+            setShowImportConfirm(false);
+            void runImport();
+          }}
+          onCancel={() => setShowImportConfirm(false)}
+        />
+      )}
+
+      {showClearConfirm && (
+        <ConfirmModal
+          title="Limpar gerador"
+          message="Limpar o título, a User Story, Critérios de Aceite, Análise do Dev e os casos gerados?"
+          confirmLabel="Ok"
+          cancelLabel="Cancelar"
+          onConfirm={doClear}
+          onCancel={() => setShowClearConfirm(false)}
         />
       )}
     </div>
