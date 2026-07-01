@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import type { Bug, Severity, Priority, BugStatus, Environment } from '../types';
 import { getBugs, createBug } from '../lib/db';
@@ -59,6 +60,7 @@ export default function Bugs() {
   const [loadError, setLoadError] = useState(false);
   const [tab, setTab] = useState<Tab>('register');
   const [modal, setModal] = useState<{ mode: BugModalMode; bug?: Bug } | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const load = async (): Promise<void> => {
     setLoading(true);
@@ -75,6 +77,20 @@ export default function Bugs() {
   useEffect(() => {
     void load();
   }, []);
+
+  // Deep-link: /bugs?bug=<id> abre o bug específico (ex.: vindo da Execução).
+  useEffect(() => {
+    const bugId = searchParams.get('bug');
+    if (!bugId || bugs.length === 0) return;
+    const found = bugs.find((b) => b.id === bugId);
+    if (found) {
+      setTab('list');
+      setModal({ mode: 'view', bug: found });
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('bug');
+    setSearchParams(next, { replace: true });
+  }, [bugs, searchParams, setSearchParams]);
 
   return (
     <div className="space-y-6">

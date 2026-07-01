@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { SavedTestCase, SavedCaseStatus } from '../types';
-import { getSavedCases, updateSavedCase, getUserProfile } from '../lib/db';
+import type { SavedTestCase, SavedCaseStatus, Bug } from '../types';
+import { getSavedCases, updateSavedCase, getUserProfile, getBugs } from '../lib/db';
 import { useAuth } from '../context/AuthContext';
 import { updateFields, updateState, AzureError } from '../lib/azure';
 import { findTestesTask } from '../lib/cardImport';
@@ -61,6 +61,7 @@ function loadRunning(): Record<string, number> {
 export default function Execucao() {
   const { user } = useAuth();
   const [cases, setCases] = useState<SavedTestCase[]>([]);
+  const [bugs, setBugs] = useState<Bug[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
@@ -96,7 +97,9 @@ export default function Execucao() {
     setLoading(true);
     setLoadError(false);
     try {
-      setCases(await getSavedCases());
+      const [cs, bs] = await Promise.all([getSavedCases(), getBugs()]);
+      setCases(cs);
+      setBugs(bs);
     } catch {
       setLoadError(true);
     } finally {
@@ -104,9 +107,29 @@ export default function Execucao() {
     }
   };
 
+  const reloadBugs = async (): Promise<void> => {
+    try {
+      setBugs(await getBugs());
+    } catch {
+      // mantém a lista anterior se falhar.
+    }
+  };
+
   useEffect(() => {
     void load();
   }, []);
+
+  // Bugs vinculados a cada caso (derivados de linkedCaseId) — bug excluído some.
+  const bugsByCase = useMemo(() => {
+    const map = new Map<string, Bug[]>();
+    for (const b of bugs) {
+      if (!b.linkedCaseId) continue;
+      const arr = map.get(b.linkedCaseId);
+      if (arr) arr.push(b);
+      else map.set(b.linkedCaseId, [b]);
+    }
+    return map;
+  }, [bugs]);
 
   const anyRunning = Object.keys(running).length > 0;
   useEffect(() => {
@@ -208,16 +231,6 @@ export default function Execucao() {
     } catch {
       patchLocal(c.id, { status: c.status });
       window.alert('Não foi possível salvar o status. Tente novamente.');
-    }
-  };
-
-  // Vincula o bug recém-criado ao caso de origem (dois lados).
-  const linkBug = async (caseId: string, bugId: string): Promise<void> => {
-    patchLocal(caseId, { bugId });
-    try {
-      await updateSavedCase(caseId, { bugId });
-    } catch {
-      // best-effort: o bug foi criado; só o vínculo no caso pode não ter salvo.
     }
   };
 
@@ -472,6 +485,7 @@ export default function Execucao() {
                   )}
                   {items.map((c) => {
                     const isRunning = Boolean(running[c.id]);
+                    const linkedBugs = bugsByCase.get(c.id) ?? [];
                     return (
                       <article
                         key={c.id}
@@ -623,17 +637,9 @@ export default function Execucao() {
                           </div>
                         </div>
 
-                        {(c.status === 'fail' || c.bugId) && (
+                        {(c.status === 'fail' || linkedBugs.length > 0) && (
                           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3 dark:border-gray-700">
-                            {c.bugId ? (
-                              <Link
-                                to="/bugs"
-                                title="Bug aberto a partir deste caso — abrir a aba Bugs"
-                                className="inline-flex items-center gap-1 rounded-md border border-red-300 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 transition-colors hover:bg-red-100 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-300"
-                              >
-                                🐞 Bug aberto
-                              </Link>
-                            ) : (
+                            {c.status === 'fail' && (
                               <button
                                 type="button"
                                 onClick={() => setBugCase(c)}
@@ -642,6 +648,16 @@ export default function Execucao() {
                                 🐞 Abrir bug
                               </button>
                             )}
+                            {linkedBugs.map((b) => (
+                              <Link
+                                key={b.id}
+                                to={`/bugs?bug=${b.id}`}
+                                title={`Abrir o bug: ${b.title}`}
+                                className="inline-flex max-w-[240px] items-center gap-1 truncate rounded-md border border-red-300 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 transition-colors hover:bg-red-100 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-300"
+                              >
+                                🐞 {b.title}
+                              </Link>
+                            ))}
                           </div>
                         )}
                       </article>
@@ -670,8 +686,7 @@ export default function Execucao() {
             azureCardId: bugCase.azureCardId,
           }}
           onClose={() => setBugCase(null)}
-          onSaved={() => {}}
-          onCreated={(bugId) => void linkBug(bugCase.id, bugId)}
+          onSaved={() => void reloadBugs()}
         />
       )}
     </div>
