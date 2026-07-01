@@ -119,10 +119,11 @@ export default function Execucao() {
     () => [...new Set(cases.map((c) => c.squad).filter(Boolean))].sort(),
     [cases],
   );
-  const sprints = useMemo(
-    () => [...new Set(cases.map((c) => c.sprint).filter(Boolean))].sort(),
-    [cases],
-  );
+  // Sprints dependem do Squad selecionado (só as sprints daquele squad).
+  const sprints = useMemo(() => {
+    const src = squadFilter ? cases.filter((c) => c.squad === squadFilter) : cases;
+    return [...new Set(src.map((c) => c.sprint).filter(Boolean))].sort();
+  }, [cases, squadFilter]);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -351,7 +352,10 @@ export default function Execucao() {
         />
         <select
           value={squadFilter}
-          onChange={(e) => setSquadFilter(e.target.value)}
+          onChange={(e) => {
+            setSquadFilter(e.target.value);
+            setSprintFilter(''); // reseta a sprint ao trocar de squad
+          }}
           className="app-select rounded-md border border-gray-300 px-2 py-2 text-sm outline-none focus:border-selbetti-green dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
         >
           <option value="">Squad: todos</option>

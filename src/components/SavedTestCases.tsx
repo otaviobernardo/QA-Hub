@@ -125,10 +125,11 @@ export default function SavedTestCases() {
     () => [...new Set(cases.map((c) => c.squad).filter(Boolean))].sort(),
     [cases],
   );
-  const sprints = useMemo(
-    () => [...new Set(cases.map((c) => c.sprint).filter(Boolean))].sort(),
-    [cases],
-  );
+  // Sprints dependem do Squad selecionado (só as sprints daquele squad).
+  const sprints = useMemo(() => {
+    const src = squadFilter ? cases.filter((c) => c.squad === squadFilter) : cases;
+    return [...new Set(src.map((c) => c.sprint).filter(Boolean))].sort();
+  }, [cases, squadFilter]);
   const modulos = useMemo(
     () => [...new Set(cases.map((c) => c.modulo).filter(Boolean))].sort(),
     [cases],
@@ -281,7 +282,14 @@ export default function SavedTestCases() {
             </option>
           ))}
         </Filter>
-        <Filter value={squadFilter} onChange={setSquadFilter} placeholder="Squad: todos">
+        <Filter
+          value={squadFilter}
+          onChange={(v) => {
+            setSquadFilter(v);
+            setSprintFilter(''); // reseta a sprint ao trocar de squad
+          }}
+          placeholder="Squad: todos"
+        >
           {squads.map((p) => (
             <option key={p} value={p}>
               {p}
