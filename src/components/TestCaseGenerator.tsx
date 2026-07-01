@@ -12,8 +12,9 @@ import {
   findMapaDeTestes,
   writeMapaDeTestes,
 } from '../lib/cardImport';
-import { AzureError, updateState } from '../lib/azure';
+import { AzureError, updateState, updateFields } from '../lib/azure';
 import TestCaseModal, { type TestCaseModalResult } from './TestCaseModal';
+import ConfirmModal from './ConfirmModal';
 
 /** Caso em branco usado ao adicionar um caso manualmente. */
 const BLANK_CASE: TestCase = {
@@ -78,11 +79,19 @@ export default function TestCaseGenerator() {
   const [importMsg, setImportMsg] = useState<
     { type: 'ok' | 'error'; text: string } | null
   >(null);
-  // Resultado da cópia dos casos para a task "Mapa de testes".
+  // Resultado das ações na task "Mapa de testes" (mover para Committed/Done).
   const [mapaMsg, setMapaMsg] = useState<
     { type: 'ok' | 'error'; text: string } | null
   >(null);
-  const [mapaPushing, setMapaPushing] = useState(false);
+  // Modais de movimentação do card "Mapa de testes" (após gerar / ao salvar).
+  const [committedModal, setCommittedModal] = useState<{ mapaId: number } | null>(
+    null,
+  );
+  const [doneModal, setDoneModal] = useState<{ mapaId: number } | null>(null);
+  const [azureBusy, setAzureBusy] = useState(false);
+  // Confirmações (substituem window.confirm) do import e do limpar.
+  const [showImportConfirm, setShowImportConfirm] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   // Provedores que o QA já configurou (na ordem do registro).
   const configured = useMemo(
@@ -105,7 +114,7 @@ export default function TestCaseGenerator() {
     }
   }, [configured, provider, model, setProvider, setModel]);
 
-  const handleImport = async (): Promise<void> => {
+  const handleImport = (): void => {
     setImportMsg(null);
     const raw = cardId.trim();
     if (!raw) {
@@ -117,16 +126,17 @@ export default function TestCaseGenerator() {
       return;
     }
     if (!user) return;
-    // Evita apagar conteúdo já digitado sem aviso.
-    if (
-      (userStory.trim() || criteria.trim() || devAnalysis.trim()) &&
-      !window.confirm(
-        'Isso vai substituir a User Story, os Critérios de Aceite e a Análise do Dev já preenchidos. Continuar?',
-      )
-    ) {
+    // Evita apagar conteúdo já digitado sem aviso — confirma via modal.
+    if (userStory.trim() || criteria.trim() || devAnalysis.trim()) {
+      setShowImportConfirm(true);
       return;
     }
+    void runImport();
+  };
 
+  const runImport = async (): Promise<void> => {
+    if (!user) return;
+    const raw = cardId.trim();
     setImporting(true);
     try {
       const profile = await getUserProfile(user.uid);
@@ -226,6 +236,20 @@ export default function TestCaseGenerator() {
       );
       setCases(sorted);
       setSavedAll(false);
+
+      // Se veio de um card do Azure, oferece mover o "Mapa de testes" para Committed.
+      const pat = profile?.azurePat?.trim();
+      if (cardId.trim() && pat) {
+        try {
+          const mapa = await findMapaDeTestes(pat, cardId.trim());
+          // Só oferece mover para Committed se ainda não estiver em Committed/Done.
+          if (mapa && mapa.state !== 'Committed' && mapa.state !== 'Done') {
+            setCommittedModal({ mapaId: mapa.id });
+          }
+        } catch {
+          // silencioso: falha ao localizar o Mapa não bloqueia a geração.
+        }
+      }
     } catch (err) {
       if (err instanceof TestCaseGenError) {
         setError({ message: err.message });
@@ -291,44 +315,77 @@ export default function TestCaseGenerator() {
       return;
     }
 
-    // Cola os casos na task "Mapa de testes" do card, se houver card vinculado.
+    // Após salvar no repositório, se houver card vinculado, abre a modal
+    // confirmando a movimentação do "Mapa de testes" para Done.
     if (cardId.trim()) {
-      await runMapaPush();
+      try {
+        const profile = await getUserProfile(user.uid);
+        const pat = profile?.azurePat?.trim();
+        if (!pat) {
+          setMapaMsg({
+            type: 'error',
+            text: 'Casos salvos. Para mover o card, configure seu PAT do Azure em Configurações.',
+          });
+        } else {
+          const mapa = await findMapaDeTestes(pat, cardId.trim());
+          if (!mapa) {
+            setMapaMsg({
+              type: 'error',
+              text: 'Casos salvos, mas a task filha "Mapa de testes" não foi encontrada no card.',
+            });
+          } else if (mapa.state === 'Done') {
+            // Já está em Done: não abre a modal de novo.
+            setMapaMsg({
+              type: 'ok',
+              text: `Casos salvos. A task "Mapa de testes" (#${mapa.id}) já está em Done.`,
+            });
+          } else {
+            setDoneModal({ mapaId: mapa.id });
+          }
+        }
+      } catch (err) {
+        setMapaMsg({
+          type: 'error',
+          text:
+            err instanceof AzureError
+              ? err.message
+              : 'Casos salvos, mas falhou ao localizar o "Mapa de testes".',
+        });
+      }
     }
     setSavingAll(false);
   };
 
-  // Cola os casos na task "Mapa de testes"; pergunta antes de sobrescrever conteúdo.
-  // Reutilizável: chamado no salvar e no botão "tentar de novo".
-  const runMapaPush = async (): Promise<void> => {
-    if (!user || !cases || cases.length === 0 || !cardId.trim()) return;
+  // Atribui a task ao QA logado (best-effort — não bloqueia se o e-mail não resolver).
+  const assignToQa = async (pat: string, id: number): Promise<void> => {
+    if (!user?.email) return;
+    try {
+      await updateFields(pat, id, { 'System.AssignedTo': user.email });
+    } catch {
+      // O e-mail pode não corresponder a um usuário do Azure; o move segue válido.
+    }
+  };
+
+  // Modal "Deseja mover para Committed?" (após gerar): move o Mapa para Committed.
+  const confirmCommitted = async (): Promise<void> => {
+    if (!committedModal || !user) return;
+    setAzureBusy(true);
     setMapaMsg(null);
-    setMapaPushing(true);
     try {
       const profile = await getUserProfile(user.uid);
       const pat = profile?.azurePat?.trim();
       if (!pat) {
         setMapaMsg({
           type: 'error',
-          text: 'Para colar no "Mapa de testes", configure seu PAT do Azure em Configurações.',
+          text: 'Configure seu PAT do Azure em Configurações.',
         });
         return;
       }
-      // Procura a task "Mapa de testes" que é FILHA do card informado no import.
-      const mapa = await findMapaDeTestes(pat, cardId.trim());
-      if (!mapa) {
-        setMapaMsg({
-          type: 'error',
-          text: 'A task filha "Mapa de testes" não foi encontrada no card informado.',
-        });
-        return;
-      }
-      // Escreve os casos na descrição dessa task filha e a move para finalizado.
-      await writeMapaDeTestes(pat, mapa.id, casesToHtml(cases));
-      await updateState(pat, mapa.id, 'Done');
+      await updateState(pat, committedModal.mapaId, 'Committed');
+      await assignToQa(pat, committedModal.mapaId);
       setMapaMsg({
         type: 'ok',
-        text: `Casos salvos na task "Mapa de testes" (#${mapa.id}) e finalizada (Done).`,
+        text: `Card "Mapa de testes" (#${committedModal.mapaId}) movido para Committed no seu nome.`,
       });
     } catch (err) {
       setMapaMsg({
@@ -336,10 +393,47 @@ export default function TestCaseGenerator() {
         text:
           err instanceof AzureError
             ? err.message
-            : 'Falhou ao colar no "Mapa de testes".',
+            : 'Falha ao mover o card para Committed.',
       });
     } finally {
-      setMapaPushing(false);
+      setAzureBusy(false);
+      setCommittedModal(null);
+    }
+  };
+
+  // Modal "O card será movido para Done" (ao salvar): escreve os casos + Done.
+  const confirmDone = async (): Promise<void> => {
+    if (!doneModal || !user || !cases) return;
+    setAzureBusy(true);
+    setMapaMsg(null);
+    try {
+      const profile = await getUserProfile(user.uid);
+      const pat = profile?.azurePat?.trim();
+      if (!pat) {
+        setMapaMsg({
+          type: 'error',
+          text: 'Configure seu PAT do Azure em Configurações.',
+        });
+        return;
+      }
+      await writeMapaDeTestes(pat, doneModal.mapaId, casesToHtml(cases));
+      await updateState(pat, doneModal.mapaId, 'Done');
+      await assignToQa(pat, doneModal.mapaId);
+      setMapaMsg({
+        type: 'ok',
+        text: `Casos gravados na task "Mapa de testes" (#${doneModal.mapaId}) e movida para Done no seu nome.`,
+      });
+    } catch (err) {
+      setMapaMsg({
+        type: 'error',
+        text:
+          err instanceof AzureError
+            ? err.message
+            : 'Falha ao mover o card para Done.',
+      });
+    } finally {
+      setAzureBusy(false);
+      setDoneModal(null);
     }
   };
 
@@ -367,13 +461,7 @@ export default function TestCaseGenerator() {
   };
 
   // Limpa os casos gerados e os campos de entrada (US, CA, Análise, card).
-  const handleClear = (): void => {
-    if (
-      !window.confirm(
-        'Limpar o título, a User Story, Critérios de Aceite, Análise do Dev e os casos gerados?',
-      )
-    )
-      return;
+  const doClear = (): void => {
     setTitulo('');
     setSquad('');
     setSprint('');
@@ -387,6 +475,7 @@ export default function TestCaseGenerator() {
     setImportMsg(null);
     setMapaMsg(null);
     setSavedAll(false);
+    setShowClearConfirm(false);
   };
 
   const hasContent =
@@ -744,7 +833,7 @@ export default function TestCaseGenerator() {
           </button>
           <button
             type="button"
-            onClick={handleClear}
+            onClick={() => setShowClearConfirm(true)}
             disabled={loading || !hasContent}
             className="rounded-md border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-red-500/10 dark:hover:text-red-400"
           >
@@ -800,23 +889,13 @@ export default function TestCaseGenerator() {
           {mapaMsg && (
             <div
               role="status"
-              className={`flex flex-wrap items-center justify-between gap-2 rounded-md px-3 py-2 text-sm ${
+              className={`rounded-md px-3 py-2 text-sm ${
                 mapaMsg.type === 'ok'
                   ? 'bg-selbetti-green/10 text-selbetti-green dark:text-green-300'
                   : 'border border-selbetti-orange/40 bg-selbetti-orange/10 text-gray-700 dark:text-gray-200'
               }`}
             >
-              <span>{mapaMsg.text}</span>
-              {mapaMsg.type === 'error' && cardId.trim() && (
-                <button
-                  type="button"
-                  onClick={() => void runMapaPush()}
-                  disabled={mapaPushing}
-                  className="shrink-0 rounded-md border border-selbetti-orange px-3 py-1 text-xs font-semibold text-selbetti-orange transition-colors hover:bg-selbetti-orange/20 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {mapaPushing ? 'Colando…' : 'Tentar colar no Mapa de testes'}
-                </button>
-              )}
+              {mapaMsg.text}
             </div>
           )}
 
@@ -940,6 +1019,66 @@ export default function TestCaseGenerator() {
           title="Adicionar caso"
           onClose={() => setAddingAt(null)}
           onSave={handleAddSave}
+        />
+      )}
+
+      {committedModal && (
+        <ConfirmModal
+          title="Mover card no Azure DevOps"
+          message={
+            <>
+              Deseja mover o card <b>Mapa de testes</b> [#{committedModal.mapaId}]
+              para <b>Committed</b>? Ele será movido no seu nome.
+            </>
+          }
+          confirmLabel="Sim, mover"
+          cancelLabel="Não, cancelar"
+          busy={azureBusy}
+          onConfirm={() => void confirmCommitted()}
+          onCancel={() => setCommittedModal(null)}
+        />
+      )}
+
+      {doneModal && (
+        <ConfirmModal
+          title="Mover card no Azure DevOps"
+          message={
+            <>
+              O card <b>Mapa de testes</b> [#{doneModal.mapaId}] será movido para{' '}
+              <b>Done</b> e receberá os casos na descrição. (Os casos já foram
+              salvos no repositório.)
+            </>
+          }
+          confirmLabel="Sim, mover"
+          cancelLabel="Não, cancelar"
+          busy={azureBusy}
+          onConfirm={() => void confirmDone()}
+          onCancel={() => setDoneModal(null)}
+        />
+      )}
+
+      {showImportConfirm && (
+        <ConfirmModal
+          title="Substituir campos"
+          message="Isso vai substituir a User Story, os Critérios de Aceite e a Análise do Dev já preenchidos. Continuar?"
+          confirmLabel="Ok"
+          cancelLabel="Cancelar"
+          onConfirm={() => {
+            setShowImportConfirm(false);
+            void runImport();
+          }}
+          onCancel={() => setShowImportConfirm(false)}
+        />
+      )}
+
+      {showClearConfirm && (
+        <ConfirmModal
+          title="Limpar gerador"
+          message="Limpar o título, a User Story, Critérios de Aceite, Análise do Dev e os casos gerados?"
+          confirmLabel="Ok"
+          cancelLabel="Cancelar"
+          onConfirm={doClear}
+          onCancel={() => setShowClearConfirm(false)}
         />
       )}
     </div>
