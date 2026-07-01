@@ -472,7 +472,13 @@ export default function TestCaseGenerator() {
             id="titulo"
             type="text"
             value={titulo}
-            onChange={(e) => setTitulo(e.target.value)}
+            onChange={(e) => {
+              const v = e.target.value;
+              setTitulo(v);
+              // Se o título deixou de referenciar o card importado, desvincula
+              // (evita colar/finalizar o "Mapa de testes" do card errado).
+              if (cardId && !v.trim().startsWith(cardId.trim())) setCardId('');
+            }}
             placeholder="Ex: Recuperação de senha por e-mail"
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-selbetti-green focus:ring-2 focus:ring-selbetti-green/30 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500"
           />

@@ -386,11 +386,23 @@ export async function getSavedCases(): Promise<SavedTestCase[]> {
 
 /** Cria um caso de teste no repositório. O id (UUID) vira o id do documento. */
 export async function createSavedCase(item: NewSavedCase): Promise<void> {
-  const { id, ...rest } = item;
-  // setDoc com id do cliente = upsert: re-salvar o mesmo caso atualiza o doc
-  // (em vez de duplicar). stripUndefined evita erro com campos opcionais ausentes.
-  await setDoc(doc(db, TEST_CASES, id), {
+  const { id, status, tempoMs, ...rest } = item;
+  const ref = doc(db, TEST_CASES, id);
+  const snap = await getDoc(ref);
+  // Re-salvar o mesmo caso (id estável) preserva a EXECUÇÃO já registrada
+  // (status/tempo) e o createdAt — só atualiza o conteúdo. Evita zerar o
+  // progresso de quem já executou. stripUndefined evita erro com opcionais ausentes.
+  if (snap.exists()) {
+    await updateDoc(ref, {
+      ...stripUndefined(rest),
+      updatedAt: serverTimestamp(),
+    });
+    return;
+  }
+  await setDoc(ref, {
     ...stripUndefined(rest),
+    status,
+    tempoMs,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
