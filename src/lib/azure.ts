@@ -227,3 +227,11 @@ export function field(item: WorkItem, name: string): string {
   const v = item.fields?.[name];
   return v == null ? '' : String(v);
 }
+
+/** URL de API de um work item — usada para montar relações (ex.: filho de um PBI). */
+export function apiWorkItemUrl(id: number | string): string {
+  return `https://dev.azure.com/${ORG}/_apis/wit/workItems/${id}`;
+}
+
+/** Relação "filho de": liga a Task criada ao PBI/US pai. */
+export const REL_PARENT = 'System.LinkTypes.Hierarchy-Reverse';

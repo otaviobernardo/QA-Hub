@@ -7,8 +7,10 @@ import type {
   BugStatus,
   Environment,
 } from '../types';
-import { createBug, updateBug } from '../lib/db';
+import { createBug, updateBug, getUserProfile } from '../lib/db';
 import { useAuth } from '../context/AuthContext';
+import { AzureError } from '../lib/azure';
+import { createBugTasks } from '../lib/bugAzure';
 import {
   SEVERITIES,
   PRIORITIES,
@@ -47,6 +49,7 @@ interface FormState {
   evidence: string;
   assignee: string;
   vm: string;
+  azureCardId: string; // PBI/US pai no Azure (para abrir os cards BUG/CR/Teste)
 }
 
 const REQUIRED_FIELDS: (keyof FormState)[] = [
@@ -74,6 +77,7 @@ function initialForm(
     evidence: initial?.evidence ?? bug?.evidence ?? '',
     assignee: initial?.assignee ?? bug?.assignee ?? defaultAssignee ?? '',
     vm: initial?.vm ?? bug?.vm ?? '',
+    azureCardId: initial?.azureCardId ?? bug?.azureCardId ?? '',
   };
 }
 
@@ -88,12 +92,17 @@ export default function BugModal({
 }: BugModalProps) {
   const { user } = useAuth();
   const displayName = user?.displayName?.trim() || user?.email || '';
-  const [form, setForm] = useState<FormState>(
-    initialForm(bug, mode === 'create' ? displayName : undefined, initial),
-  );
+  const [form, setForm] = useState<FormState>(() => {
+    const f = initialForm(bug, mode === 'create' ? displayName : undefined, initial);
+    // PBI pai vindo do caso de teste (fluxo Falhou → abrir bug).
+    if (!f.azureCardId && link?.azureCardId) f.azureCardId = link.azureCardId;
+    return f;
+  });
   const [errors, setErrors] = useState<Set<keyof FormState>>(new Set());
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Id do bug já criado no Firestore — evita duplicar ao re-tentar os cards do Azure.
+  const [createdBugId, setCreatedBugId] = useState<string | null>(null);
 
   const isView = mode === 'view';
 
@@ -123,29 +132,76 @@ export default function BugModal({
     if (!user) return;
     if (!validate()) return;
 
+    const parent = form.azureCardId.trim();
+    if (parent && !/^\d+$/.test(parent)) {
+      setSaveError('O ID do PBI/US pai deve ser numérico (ex: 151171).');
+      return;
+    }
+
     setSaving(true);
-    try {
-      const vmValue = form.environment === 'Homologação' && form.vm ? form.vm : undefined;
-      if (mode === 'create') {
-        const id = uuidv4();
+    const vmValue =
+      form.environment === 'Homologação' && form.vm ? form.vm : undefined;
+
+    // Edição: só atualiza e fecha.
+    if (mode === 'edit' && bug) {
+      try {
+        await updateBug(bug.id, { ...form, vm: vmValue });
+        onSaved();
+        onClose();
+      } catch {
+        setSaveError('Não foi possível salvar o bug. Tente novamente.');
+        setSaving(false);
+      }
+      return;
+    }
+
+    // Criação — 1) grava no Firestore (só na primeira vez).
+    const id = createdBugId ?? uuidv4();
+    if (!createdBugId) {
+      try {
         await createBug({
           id,
           ...form,
           vm: vmValue,
+          azureCardId: parent || undefined,
           linkedCaseId: link?.caseId,
           linkedCaseTitulo: link?.caseTitulo,
-          azureCardId: link?.azureCardId,
           createdBy: user.uid,
           createdByName: user.displayName?.trim() || user.email || '',
         });
         onCreated?.(id);
-      } else if (mode === 'edit' && bug) {
-        await updateBug(bug.id, { ...form, vm: vmValue });
+        setCreatedBugId(id);
+        onSaved();
+      } catch {
+        setSaveError('Não foi possível salvar o bug. Tente novamente.');
+        setSaving(false);
+        return;
       }
-      onSaved();
+    }
+
+    // 2) Abre os cards no Azure (BUG/CR/Teste) sob o PBI pai. Best-effort.
+    if (!parent) {
+      onClose(); // sem PBI pai: não cria nada no Azure.
+      return;
+    }
+    try {
+      const profile = await getUserProfile(user.uid);
+      const pat = profile?.azurePat?.trim();
+      if (!pat) {
+        setSaveError(
+          'Bug salvo. Para abrir os cards BUG/CR/Teste no Azure, configure seu PAT em Configurações.',
+        );
+        setSaving(false);
+        return;
+      }
+      await createBugTasks(pat, Number(parent), form.title.trim());
       onClose();
-    } catch {
-      setSaveError('Não foi possível salvar o bug. Tente novamente.');
+    } catch (err) {
+      setSaveError(
+        `Bug salvo, mas falhou ao abrir os cards no Azure: ${
+          err instanceof AzureError ? err.message : 'erro inesperado.'
+        } Você pode fechar ou tentar de novo.`,
+      );
       setSaving(false);
     }
   };
@@ -201,6 +257,23 @@ export default function BugModal({
                 className={inputClass(errors.has('title'))}
               />
             </Field>
+
+            {mode === 'create' && (
+              <Field label="PBI/US pai no Azure (opcional)">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={form.azureCardId}
+                  onChange={(e) => setField('azureCardId', e.target.value)}
+                  placeholder="Ex: 151171 — abre os cards BUG | / CR | / Teste | sob essa US"
+                  className={inputClass(false)}
+                />
+                <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                  Se preenchido (e com PAT configurado), ao salvar são criadas 3
+                  Tasks no Azure (BUG, CR e Teste) em New e sem dono, sob essa US.
+                </p>
+              </Field>
+            )}
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Módulo" required error={errors.has('module')}>
@@ -347,14 +420,20 @@ export default function BugModal({
                 onClick={onClose}
                 className="rounded-md px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
               >
-                Cancelar
+                {createdBugId ? 'Fechar' : 'Cancelar'}
               </button>
               <button
                 type="submit"
                 disabled={saving}
                 className="rounded-md bg-selbetti-green px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-selbetti-green/90 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {saving ? 'Salvando…' : mode === 'create' ? 'Criar bug' : 'Salvar alterações'}
+                {saving
+                  ? 'Salvando…'
+                  : createdBugId
+                    ? 'Tentar abrir cards no Azure'
+                    : mode === 'create'
+                      ? 'Criar bug'
+                      : 'Salvar alterações'}
               </button>
             </div>
           </form>
