@@ -34,6 +34,7 @@ interface PersistedState {
   userStory: string;
   criteria: string;
   devAnalysis: string;
+  regras: string;
   tipos: Tipo[];
   casosPorTipo: number;
   provider: ProviderId | '';
@@ -53,6 +54,7 @@ const INITIAL: PersistedState = {
   userStory: '',
   criteria: '',
   devAnalysis: '',
+  regras: '',
   tipos: ['positivo', 'negativo'],
   casosPorTipo: 3,
   provider: '',
@@ -97,6 +99,8 @@ interface GeneratorContextValue {
   setCriteria: (v: string) => void;
   devAnalysis: string;
   setDevAnalysis: (v: string) => void;
+  regras: string;
+  setRegras: (v: string) => void;
   tipos: Tipo[];
   toggleTipo: (t: Tipo) => void;
   casosPorTipo: number;
@@ -162,6 +166,8 @@ export function GeneratorProvider({ children }: { children: ReactNode }) {
     setCriteria: (v) => patch({ criteria: v }),
     devAnalysis: state.devAnalysis,
     setDevAnalysis: (v) => patch({ devAnalysis: v }),
+    regras: state.regras,
+    setRegras: (v) => patch({ regras: v }),
     tipos: state.tipos,
     toggleTipo: (t) =>
       setState((s) => ({

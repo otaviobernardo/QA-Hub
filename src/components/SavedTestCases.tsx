@@ -255,13 +255,6 @@ export default function SavedTestCases() {
           >
             Exportar CSV
           </button>
-          <button
-            type="button"
-            onClick={() => setModal({ mode: 'create' })}
-            className="rounded-md bg-selbetti-green px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-selbetti-green/90"
-          >
-            + Novo manual
-          </button>
         </div>
       </div>
 

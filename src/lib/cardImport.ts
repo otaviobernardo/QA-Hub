@@ -96,6 +96,32 @@ export async function writeMapaDeTestes(
   await updateFields(pat, id, { 'System.Description': html });
 }
 
+/** Task filha "Testes" (título exatamente "Testes" — não confundir com "Mapa de testes"). */
+function isTestes(item: WorkItem): boolean {
+  return field(item, 'System.Title').trim().toLowerCase() === 'testes';
+}
+
+/**
+ * Localiza a Task filha "Testes" da US (PBI) e devolve id + descrição atual +
+ * estado. Retorna null se não achar.
+ */
+export async function findTestesTask(
+  pat: string,
+  cardId: number | string,
+): Promise<MapaTask | null> {
+  const pbi = await readWorkItem(pat, cardId);
+  const ids = childIdsOf(pbi);
+  if (ids.length === 0) return null;
+  const children = await Promise.all(ids.map((id) => readWorkItem(pat, id)));
+  const testes = children.find(isTestes);
+  if (!testes) return null;
+  return {
+    id: testes.id,
+    currentHtml: field(testes, 'System.Description'),
+    state: field(testes, 'System.State'),
+  };
+}
+
 export interface CardImport {
   title: string;
   userStory: string;

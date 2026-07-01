@@ -47,6 +47,8 @@ export default function TestCaseGenerator() {
     setCriteria,
     devAnalysis,
     setDevAnalysis,
+    regras,
+    setRegras,
     tipos,
     toggleTipo,
     casosPorTipo,
@@ -213,6 +215,7 @@ export default function TestCaseGenerator() {
         userStory: userStory.trim(),
         acceptanceCriteria: criteria.trim(),
         devAnalysis: devAnalysis.trim(),
+        regrasNegocio: regras.trim(),
         tipos: [...tipos],
         casosPorTipo,
       });
@@ -378,6 +381,7 @@ export default function TestCaseGenerator() {
     setUserStory('');
     setCriteria('');
     setDevAnalysis('');
+    setRegras('');
     setCases(null);
     setError(null);
     setImportMsg(null);
@@ -391,6 +395,7 @@ export default function TestCaseGenerator() {
     Boolean(userStory.trim()) ||
     Boolean(criteria.trim()) ||
     Boolean(devAnalysis.trim()) ||
+    Boolean(regras.trim()) ||
     Boolean(cardId.trim());
 
   return (
@@ -575,6 +580,26 @@ export default function TestCaseGenerator() {
             onChange={(e) => setDevAnalysis(e.target.value)}
             rows={6}
             placeholder="Ex: endpoint POST /auth/reset-password, token JWT expira em 1800s, validação no front e back, integração com SendGrid."
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-selbetti-green focus:ring-2 focus:ring-selbetti-green/30 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500"
+          />
+        </div>
+
+        <div>
+          <label
+            htmlFor="regras"
+            className="mb-1 flex items-center justify-between text-sm font-medium text-gray-700 dark:text-gray-200"
+          >
+            Regras de negócio / critérios adicionais
+            <span className="text-xs font-normal text-gray-400 dark:text-gray-500">
+              O que não está explícito no card (opcional)
+            </span>
+          </label>
+          <textarea
+            id="regras"
+            value={regras}
+            onChange={(e) => setRegras(e.target.value)}
+            rows={4}
+            placeholder="Ex: cliente do tipo PJ não pode trocar de perfil; e-mail é obrigatório quando o tipo de assinante é 'E-mail'."
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-selbetti-green focus:ring-2 focus:ring-selbetti-green/30 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500"
           />
         </div>

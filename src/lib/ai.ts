@@ -49,6 +49,8 @@ export interface GenerateParams {
   userStory: string;
   acceptanceCriteria: string;
   devAnalysis?: string;
+  /** Regras de negócio / critérios adicionais informados manualmente pelo QA. */
+  regrasNegocio?: string;
   tipos: TestCase['tipo'][];
   /** Quantos casos gerar por tipo selecionado (default 3). */
   casosPorTipo?: number;
@@ -106,10 +108,18 @@ function buildUserContent(
   userStory: string,
   criteria: string,
   devAnalysis?: string,
+  regrasNegocio?: string,
 ): string {
   const parts = ['User Story:', userStory, '', 'Critérios de Aceite:', criteria];
   if (devAnalysis && devAnalysis.trim()) {
     parts.push('', 'Análise do Dev:', devAnalysis.trim());
+  }
+  if (regrasNegocio && regrasNegocio.trim()) {
+    parts.push(
+      '',
+      'Regras de negócio / critérios adicionais (informados pelo QA, não explícitos no card — considere-os na geração):',
+      regrasNegocio.trim(),
+    );
   }
   return parts.join('\n');
 }
@@ -348,6 +358,7 @@ export async function generateTestCases(
     userStory,
     acceptanceCriteria,
     devAnalysis,
+    regrasNegocio,
     tipos,
     casosPorTipo = 3,
   } = params;
@@ -358,7 +369,12 @@ export async function generateTestCases(
   }
 
   const system = buildSystemPrompt(tipos, casosPorTipo);
-  const userContent = buildUserContent(userStory, acceptanceCriteria, devAnalysis);
+  const userContent = buildUserContent(
+    userStory,
+    acceptanceCriteria,
+    devAnalysis,
+    regrasNegocio,
+  );
 
   // Escala o limite de saída com a quantidade esperada para evitar corte.
   const expected = Math.max(1, casosPorTipo) * Math.max(1, tipos.length);

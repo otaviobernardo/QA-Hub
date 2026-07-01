@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { SavedTestCase, SavedCaseStatus } from '../types';
-import { getSavedCases, updateSavedCase } from '../lib/db';
+import { getSavedCases, updateSavedCase, getUserProfile } from '../lib/db';
+import { useAuth } from '../context/AuthContext';
+import { updateFields, updateState, AzureError } from '../lib/azure';
+import { findTestesTask } from '../lib/cardImport';
 import {
   tipoBadge,
   tipoLabel,
@@ -31,9 +34,16 @@ function loadRunning(): Record<string, number> {
 }
 
 export default function Execucao() {
+  const { user } = useAuth();
   const [cases, setCases] = useState<SavedTestCase[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+
+  // Conclusão do card "Testes" da US: estado de processamento e mensagens por grupo.
+  const [concluindo, setConcluindo] = useState<string | null>(null);
+  const [concluirMsg, setConcluirMsg] = useState<
+    Record<string, { type: 'ok' | 'error'; text: string }>
+  >({});
 
   const [squadFilter, setSquadFilter] = useState('');
   const [sprintFilter, setSprintFilter] = useState('');
@@ -172,6 +182,79 @@ export default function Execucao() {
     }
   };
 
+  // Conclui a task filha "Testes" da US (PBI = azureCardId): move para Done e
+  // registra o tempo total na descrição. Só habilitado quando todos os casos da
+  // feature têm resultado (nenhum pendente).
+  const concluirTestes = async (
+    grupo: string,
+    cardId: string,
+    totalMs: number,
+  ): Promise<void> => {
+    if (!user) return;
+    if (
+      !window.confirm(
+        `Concluir o card "Testes" da US #${cardId} e registrar o tempo total ${formatTime(totalMs)}?`,
+      )
+    )
+      return;
+    setConcluindo(grupo);
+    setConcluirMsg((m) => {
+      const n = { ...m };
+      delete n[grupo];
+      return n;
+    });
+    try {
+      const profile = await getUserProfile(user.uid);
+      const pat = profile?.azurePat?.trim();
+      if (!pat) {
+        setConcluirMsg((m) => ({
+          ...m,
+          [grupo]: {
+            type: 'error',
+            text: 'Configure seu PAT do Azure em Configurações.',
+          },
+        }));
+        return;
+      }
+      const testes = await findTestesTask(pat, cardId);
+      if (!testes) {
+        setConcluirMsg((m) => ({
+          ...m,
+          [grupo]: { type: 'error', text: 'Task "Testes" não encontrada na US.' },
+        }));
+        return;
+      }
+      // Registra o tempo na descrição (idempotente: remove a linha anterior).
+      const cleaned = testes.currentHtml.replace(
+        /<b>Tempo de testes:<\/b>[^<]*(<br\s*\/?>)?/gi,
+        '',
+      );
+      const html = `${cleaned}<br/><b>Tempo de testes:</b> ${formatTime(totalMs)}`;
+      await updateFields(pat, testes.id, { 'System.Description': html });
+      await updateState(pat, testes.id, 'Done');
+      setConcluirMsg((m) => ({
+        ...m,
+        [grupo]: {
+          type: 'ok',
+          text: `Card "Testes" (#${testes.id}) concluído. Tempo registrado: ${formatTime(totalMs)}.`,
+        },
+      }));
+    } catch (err) {
+      setConcluirMsg((m) => ({
+        ...m,
+        [grupo]: {
+          type: 'error',
+          text:
+            err instanceof AzureError
+              ? err.message
+              : 'Falha ao concluir o card "Testes".',
+        },
+      }));
+    } finally {
+      setConcluindo(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center py-16">
@@ -265,6 +348,9 @@ export default function Execucao() {
           const passed = items.filter((c) => c.status === 'pass').length;
           const failed = items.filter((c) => c.status === 'fail').length;
           const total = items.reduce((sum, c) => sum + elapsedOf(c), 0);
+          const allExecuted = items.every((c) => c.status !== 'pendente');
+          const cardId = items.find((c) => c.azureCardId)?.azureCardId;
+          const cMsg = concluirMsg[grupo];
           return (
             <div
               key={grupo}
@@ -308,6 +394,40 @@ export default function Execucao() {
 
               {isOpen && (
                 <div className="space-y-3 border-t border-gray-100 p-4 dark:border-gray-700">
+                  {/* Concluir card "Testes" da US quando todos os casos têm resultado */}
+                  {cardId && allExecuted && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-selbetti-green/40 bg-selbetti-green/10 px-3 py-2 text-sm">
+                      <span className="text-gray-700 dark:text-gray-200">
+                        Todos os casos têm resultado. Tempo total:{' '}
+                        <span className="font-mono font-semibold">
+                          {formatTime(total)}
+                        </span>
+                        .
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void concluirTestes(grupo, cardId, total)}
+                        disabled={concluindo === grupo}
+                        className="shrink-0 rounded-md bg-selbetti-green px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-selbetti-green/90 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {concluindo === grupo
+                          ? 'Concluindo…'
+                          : 'Concluir card "Testes" no Azure'}
+                      </button>
+                    </div>
+                  )}
+                  {cMsg && (
+                    <div
+                      role="status"
+                      className={`rounded-md px-3 py-2 text-sm ${
+                        cMsg.type === 'ok'
+                          ? 'bg-selbetti-green/10 text-selbetti-green dark:text-green-300'
+                          : 'border border-selbetti-orange/40 bg-selbetti-orange/10 text-gray-700 dark:text-gray-200'
+                      }`}
+                    >
+                      {cMsg.text}
+                    </div>
+                  )}
                   {items.map((c) => {
                     const isRunning = Boolean(running[c.id]);
                     return (
