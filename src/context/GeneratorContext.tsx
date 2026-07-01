@@ -28,9 +28,13 @@ const STORAGE_KEY = 'qa-hub-generator';
 
 interface PersistedState {
   titulo: string;
+  squad: string;
+  sprint: string;
+  cardId: string;
   userStory: string;
   criteria: string;
   devAnalysis: string;
+  regras: string;
   tipos: Tipo[];
   casosPorTipo: number;
   provider: ProviderId | '';
@@ -44,9 +48,13 @@ interface PersistedState {
 
 const INITIAL: PersistedState = {
   titulo: '',
+  squad: '',
+  sprint: '',
+  cardId: '',
   userStory: '',
   criteria: '',
   devAnalysis: '',
+  regras: '',
   tipos: ['positivo', 'negativo'],
   casosPorTipo: 3,
   provider: '',
@@ -79,12 +87,20 @@ function loadState(): PersistedState {
 interface GeneratorContextValue {
   titulo: string;
   setTitulo: (v: string) => void;
+  squad: string;
+  setSquad: (v: string) => void;
+  sprint: string;
+  setSprint: (v: string) => void;
+  cardId: string;
+  setCardId: (v: string) => void;
   userStory: string;
   setUserStory: (v: string) => void;
   criteria: string;
   setCriteria: (v: string) => void;
   devAnalysis: string;
   setDevAnalysis: (v: string) => void;
+  regras: string;
+  setRegras: (v: string) => void;
   tipos: Tipo[];
   toggleTipo: (t: Tipo) => void;
   casosPorTipo: number;
@@ -138,12 +154,20 @@ export function GeneratorProvider({ children }: { children: ReactNode }) {
   const value: GeneratorContextValue = {
     titulo: state.titulo,
     setTitulo: (v) => patch({ titulo: v }),
+    squad: state.squad,
+    setSquad: (v) => patch({ squad: v }),
+    sprint: state.sprint,
+    setSprint: (v) => patch({ sprint: v }),
+    cardId: state.cardId,
+    setCardId: (v) => patch({ cardId: v }),
     userStory: state.userStory,
     setUserStory: (v) => patch({ userStory: v }),
     criteria: state.criteria,
     setCriteria: (v) => patch({ criteria: v }),
     devAnalysis: state.devAnalysis,
     setDevAnalysis: (v) => patch({ devAnalysis: v }),
+    regras: state.regras,
+    setRegras: (v) => patch({ regras: v }),
     tipos: state.tipos,
     toggleTipo: (t) =>
       setState((s) => ({

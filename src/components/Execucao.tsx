@@ -1,12 +1,40 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { SavedTestCase, SavedCaseStatus } from '../types';
-import { getSavedCases, updateSavedCase } from '../lib/db';
+import { getSavedCases, updateSavedCase, getUserProfile } from '../lib/db';
+import { useAuth } from '../context/AuthContext';
+import { updateFields, updateState, AzureError } from '../lib/azure';
+import { findTestesTask } from '../lib/cardImport';
 import {
   tipoBadge,
   tipoLabel,
   savedStatusBadge,
   SAVED_STATUS_LABEL,
 } from '../lib/testCaseOptions';
+import BugModal from './BugModal';
+
+/** Monta a descrição do bug a partir de um caso que falhou. */
+function bugBodyFromCase(c: SavedTestCase): string {
+  const corpo =
+    c.tipo === 'exploratorio'
+      ? [
+          c.explore && `EXPLORE: ${c.explore}`,
+          c.com && `COM: ${c.com}`,
+          c.para_validar && `PARA VALIDAR: ${c.para_validar}`,
+          c.e && `E: ${c.e}`,
+        ]
+          .filter(Boolean)
+          .join('\n')
+      : c.passos.map((p, i) => `${i + 1}. ${p}`).join('\n');
+  return [
+    `Caso de teste: ${c.titulo}`,
+    corpo && `Passos:\n${corpo}`,
+    c.resultado_esperado && `Resultado esperado: ${c.resultado_esperado}`,
+    'Resultado obtido: FALHOU na execução.',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+}
 
 function formatTime(ms: number): string {
   const totalSec = Math.floor(ms / 1000);
@@ -31,9 +59,23 @@ function loadRunning(): Record<string, number> {
 }
 
 export default function Execucao() {
+  const { user } = useAuth();
   const [cases, setCases] = useState<SavedTestCase[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+
+  // Caso que falhou e vai abrir um bug (modal pré-preenchido).
+  const [bugCase, setBugCase] = useState<SavedTestCase | null>(null);
+
+  // Conclusão do card "Testes" da US: estado de processamento e mensagens por grupo.
+  const [concluindo, setConcluindo] = useState<string | null>(null);
+  const [concluirMsg, setConcluirMsg] = useState<
+    Record<string, { type: 'ok' | 'error'; text: string }>
+  >({});
+
+  const [squadFilter, setSquadFilter] = useState('');
+  const [sprintFilter, setSprintFilter] = useState('');
+  const [search, setSearch] = useState('');
 
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   // caseId -> instante de início do cronômetro (epoch ms). Ausente = parado.
@@ -73,16 +115,38 @@ export default function Execucao() {
     return () => window.clearInterval(id);
   }, [anyRunning]);
 
+  const squads = useMemo(
+    () => [...new Set(cases.map((c) => c.squad).filter(Boolean))].sort(),
+    [cases],
+  );
+  const sprints = useMemo(
+    () => [...new Set(cases.map((c) => c.sprint).filter(Boolean))].sort(),
+    [cases],
+  );
+
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return cases.filter((c) => {
+      if (squadFilter && c.squad !== squadFilter) return false;
+      if (sprintFilter && c.sprint !== sprintFilter) return false;
+      if (term) {
+        const hay = `${c.grupo} ${c.titulo} ${c.squad} ${c.sprint}`.toLowerCase();
+        if (!hay.includes(term)) return false;
+      }
+      return true;
+    });
+  }, [cases, squadFilter, sprintFilter, search]);
+
   const groups = useMemo(() => {
     const map = new Map<string, SavedTestCase[]>();
-    for (const c of cases) {
+    for (const c of filtered) {
       const key = c.grupo || 'Sem título';
       const arr = map.get(key);
       if (arr) arr.push(c);
       else map.set(key, [c]);
     }
     return [...map.entries()];
-  }, [cases]);
+  }, [filtered]);
 
   const toggleGroup = (g: string) =>
     setOpenGroups((prev) => {
@@ -146,6 +210,89 @@ export default function Execucao() {
     }
   };
 
+  // Vincula o bug recém-criado ao caso de origem (dois lados).
+  const linkBug = async (caseId: string, bugId: string): Promise<void> => {
+    patchLocal(caseId, { bugId });
+    try {
+      await updateSavedCase(caseId, { bugId });
+    } catch {
+      // best-effort: o bug foi criado; só o vínculo no caso pode não ter salvo.
+    }
+  };
+
+  // Conclui a task filha "Testes" da US (PBI = azureCardId): move para Done e
+  // registra o tempo total na descrição. Só habilitado quando todos os casos da
+  // feature têm resultado (nenhum pendente).
+  const concluirTestes = async (
+    grupo: string,
+    cardId: string,
+    totalMs: number,
+  ): Promise<void> => {
+    if (!user) return;
+    if (
+      !window.confirm(
+        `Concluir o card "Testes" da US #${cardId} e registrar o tempo total ${formatTime(totalMs)}?`,
+      )
+    )
+      return;
+    setConcluindo(grupo);
+    setConcluirMsg((m) => {
+      const n = { ...m };
+      delete n[grupo];
+      return n;
+    });
+    try {
+      const profile = await getUserProfile(user.uid);
+      const pat = profile?.azurePat?.trim();
+      if (!pat) {
+        setConcluirMsg((m) => ({
+          ...m,
+          [grupo]: {
+            type: 'error',
+            text: 'Configure seu PAT do Azure em Configurações.',
+          },
+        }));
+        return;
+      }
+      const testes = await findTestesTask(pat, cardId);
+      if (!testes) {
+        setConcluirMsg((m) => ({
+          ...m,
+          [grupo]: { type: 'error', text: 'Task "Testes" não encontrada na US.' },
+        }));
+        return;
+      }
+      // Registra o tempo na descrição (idempotente: remove a linha anterior).
+      const cleaned = testes.currentHtml.replace(
+        /<b>Tempo de testes:<\/b>[^<]*(<br\s*\/?>)?/gi,
+        '',
+      );
+      const html = `${cleaned}<br/><b>Tempo de testes:</b> ${formatTime(totalMs)}`;
+      await updateFields(pat, testes.id, { 'System.Description': html });
+      await updateState(pat, testes.id, 'Done');
+      setConcluirMsg((m) => ({
+        ...m,
+        [grupo]: {
+          type: 'ok',
+          text: `Card "Testes" (#${testes.id}) concluído. Tempo registrado: ${formatTime(totalMs)}.`,
+        },
+      }));
+    } catch (err) {
+      setConcluirMsg((m) => ({
+        ...m,
+        [grupo]: {
+          type: 'error',
+          text:
+            err instanceof AzureError
+              ? err.message
+              : 'Falha ao concluir o card "Testes".',
+        },
+      }));
+    } finally {
+      setConcluindo(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center py-16">
@@ -193,12 +340,55 @@ export default function Execucao() {
         </p>
       </div>
 
+      {/* Filtros */}
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar por feature, título…"
+          className="min-w-[200px] flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-selbetti-green focus:ring-2 focus:ring-selbetti-green/30 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500"
+        />
+        <select
+          value={squadFilter}
+          onChange={(e) => setSquadFilter(e.target.value)}
+          className="app-select rounded-md border border-gray-300 px-2 py-2 text-sm outline-none focus:border-selbetti-green dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+        >
+          <option value="">Squad: todos</option>
+          {squads.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+        </select>
+        <select
+          value={sprintFilter}
+          onChange={(e) => setSprintFilter(e.target.value)}
+          className="app-select rounded-md border border-gray-300 px-2 py-2 text-sm outline-none focus:border-selbetti-green dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+        >
+          <option value="">Sprint: todas</option>
+          {sprints.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {groups.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-400">
+          Nenhum caso com os filtros atuais.
+        </div>
+      ) : (
       <div className="space-y-3">
         {groups.map(([grupo, items]) => {
           const isOpen = openGroups.has(grupo);
           const passed = items.filter((c) => c.status === 'pass').length;
           const failed = items.filter((c) => c.status === 'fail').length;
           const total = items.reduce((sum, c) => sum + elapsedOf(c), 0);
+          const allExecuted = items.every((c) => c.status !== 'pendente');
+          const cardId = items.find((c) => c.azureCardId)?.azureCardId;
+          const cMsg = concluirMsg[grupo];
           return (
             <div
               key={grupo}
@@ -210,10 +400,19 @@ export default function Execucao() {
                 aria-expanded={isOpen}
                 className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/50"
               >
-                <span className="flex-1 font-semibold text-gray-800 dark:text-gray-100">
-                  {grupo}
-                </span>
-                <span className="text-xs text-gray-500 dark:text-gray-400">
+                <div className="min-w-0 flex-1">
+                  {(items[0]?.squad || items[0]?.sprint) && (
+                    <span className="mb-0.5 block truncate text-xs text-gray-400 dark:text-gray-500">
+                      {[items[0]?.squad, items[0]?.sprint]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </span>
+                  )}
+                  <span className="block truncate font-semibold text-gray-800 dark:text-gray-100">
+                    {grupo}
+                  </span>
+                </div>
+                <span className="shrink-0 text-xs text-gray-500 dark:text-gray-400">
                   <span className="text-selbetti-green dark:text-green-400">{passed} ok</span>
                   {' · '}
                   <span className="text-red-600 dark:text-red-400">{failed} falhas</span>
@@ -233,6 +432,40 @@ export default function Execucao() {
 
               {isOpen && (
                 <div className="space-y-3 border-t border-gray-100 p-4 dark:border-gray-700">
+                  {/* Concluir card "Testes" da US quando todos os casos têm resultado */}
+                  {cardId && allExecuted && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-selbetti-green/40 bg-selbetti-green/10 px-3 py-2 text-sm">
+                      <span className="text-gray-700 dark:text-gray-200">
+                        Todos os casos têm resultado. Tempo total:{' '}
+                        <span className="font-mono font-semibold">
+                          {formatTime(total)}
+                        </span>
+                        .
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void concluirTestes(grupo, cardId, total)}
+                        disabled={concluindo === grupo}
+                        className="shrink-0 rounded-md bg-selbetti-green px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-selbetti-green/90 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {concluindo === grupo
+                          ? 'Concluindo…'
+                          : 'Concluir card "Testes" no Azure'}
+                      </button>
+                    </div>
+                  )}
+                  {cMsg && (
+                    <div
+                      role="status"
+                      className={`rounded-md px-3 py-2 text-sm ${
+                        cMsg.type === 'ok'
+                          ? 'bg-selbetti-green/10 text-selbetti-green dark:text-green-300'
+                          : 'border border-selbetti-orange/40 bg-selbetti-orange/10 text-gray-700 dark:text-gray-200'
+                      }`}
+                    >
+                      {cMsg.text}
+                    </div>
+                  )}
                   {items.map((c) => {
                     const isRunning = Boolean(running[c.id]);
                     return (
@@ -385,6 +618,28 @@ export default function Execucao() {
                             </button>
                           </div>
                         </div>
+
+                        {(c.status === 'fail' || c.bugId) && (
+                          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3 dark:border-gray-700">
+                            {c.bugId ? (
+                              <Link
+                                to="/bugs"
+                                title="Bug aberto a partir deste caso — abrir a aba Bugs"
+                                className="inline-flex items-center gap-1 rounded-md border border-red-300 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 transition-colors hover:bg-red-100 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-300"
+                              >
+                                🐞 Bug aberto
+                              </Link>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setBugCase(c)}
+                                className="inline-flex items-center gap-1 rounded-md border border-red-300 px-3 py-1 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 dark:border-red-500/40 dark:text-red-400 dark:hover:bg-red-500/10"
+                              >
+                                🐞 Abrir bug
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </article>
                     );
                   })}
@@ -394,6 +649,27 @@ export default function Execucao() {
           );
         })}
       </div>
+      )}
+
+      {bugCase && (
+        <BugModal
+          mode="create"
+          initial={{
+            title: `[${bugCase.squad || 'Caso'}] ${bugCase.titulo}`,
+            module: bugCase.modulo,
+            sprint: bugCase.sprint,
+            description: bugBodyFromCase(bugCase),
+          }}
+          link={{
+            caseId: bugCase.id,
+            caseTitulo: bugCase.titulo,
+            azureCardId: bugCase.azureCardId,
+          }}
+          onClose={() => setBugCase(null)}
+          onSaved={() => {}}
+          onCreated={(bugId) => void linkBug(bugCase.id, bugId)}
+        />
+      )}
     </div>
   );
 }

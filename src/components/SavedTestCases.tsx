@@ -36,6 +36,7 @@ type ModalState =
 
 const emptyCase: TestCase & {
   grupo: string;
+  squad: string;
   sprint: string;
   modulo: string;
   status: SavedCaseStatus;
@@ -47,6 +48,7 @@ const emptyCase: TestCase & {
   resultado_esperado: '',
   ca_coberto: '',
   grupo: '',
+  squad: '',
   sprint: '',
   modulo: '',
   status: 'pendente',
@@ -64,6 +66,7 @@ export default function SavedTestCases() {
   const [search, setSearch] = useState('');
   const [tipoFilter, setTipoFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [squadFilter, setSquadFilter] = useState('');
   const [sprintFilter, setSprintFilter] = useState('');
   const [moduloFilter, setModuloFilter] = useState('');
 
@@ -118,6 +121,10 @@ export default function SavedTestCases() {
     void load();
   }, []);
 
+  const squads = useMemo(
+    () => [...new Set(cases.map((c) => c.squad).filter(Boolean))].sort(),
+    [cases],
+  );
   const sprints = useMemo(
     () => [...new Set(cases.map((c) => c.sprint).filter(Boolean))].sort(),
     [cases],
@@ -132,15 +139,25 @@ export default function SavedTestCases() {
     return cases.filter((c) => {
       if (tipoFilter && c.tipo !== tipoFilter) return false;
       if (statusFilter && c.status !== statusFilter) return false;
+      if (squadFilter && c.squad !== squadFilter) return false;
       if (sprintFilter && c.sprint !== sprintFilter) return false;
       if (moduloFilter && c.modulo !== moduloFilter) return false;
       if (term) {
-        const hay = `${c.grupo} ${c.titulo} ${c.descricao} ${c.modulo}`.toLowerCase();
+        const hay =
+          `${c.grupo} ${c.titulo} ${c.descricao} ${c.modulo} ${c.squad} ${c.sprint}`.toLowerCase();
         if (!hay.includes(term)) return false;
       }
       return true;
     });
-  }, [cases, search, tipoFilter, statusFilter, sprintFilter, moduloFilter]);
+  }, [
+    cases,
+    search,
+    tipoFilter,
+    statusFilter,
+    squadFilter,
+    sprintFilter,
+    moduloFilter,
+  ]);
 
   // Agrupa os casos filtrados por título (grupo), preservando a ordem (mais recente primeiro).
   const groups = useMemo(() => {
@@ -238,13 +255,6 @@ export default function SavedTestCases() {
           >
             Exportar CSV
           </button>
-          <button
-            type="button"
-            onClick={() => setModal({ mode: 'create' })}
-            className="rounded-md bg-selbetti-green px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-selbetti-green/90"
-          >
-            + Novo manual
-          </button>
         </div>
       </div>
 
@@ -268,6 +278,13 @@ export default function SavedTestCases() {
           {STATUSES.map((s) => (
             <option key={s} value={s}>
               {SAVED_STATUS_LABEL[s]}
+            </option>
+          ))}
+        </Filter>
+        <Filter value={squadFilter} onChange={setSquadFilter} placeholder="Squad: todos">
+          {squads.map((p) => (
+            <option key={p} value={p}>
+              {p}
             </option>
           ))}
         </Filter>
@@ -358,10 +375,19 @@ export default function SavedTestCases() {
                   aria-expanded={isOpen}
                   className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/50"
                 >
-                  <span className="flex-1 font-semibold text-gray-800 dark:text-gray-100">
-                    {grupo}
-                  </span>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-semibold text-gray-800 dark:text-gray-100">
+                      {grupo}
+                    </p>
+                    {(items[0]?.squad || items[0]?.sprint) && (
+                      <p className="mt-0.5 truncate text-xs text-gray-400 dark:text-gray-500">
+                        {[items[0]?.squad, items[0]?.sprint]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </p>
+                    )}
+                  </div>
+                  <span className="shrink-0 text-xs text-gray-500 dark:text-gray-400">
                     {items.length} caso{items.length === 1 ? '' : 's'} · {passed}/
                     {items.length} passaram
                   </span>
@@ -525,10 +551,12 @@ function bodyText(c: SavedTestCase): string {
 
 function exportCsv(cases: SavedTestCase[]): void {
   const headers = [
+    'Squad',
+    'Sprint',
+    'Feature',
     'Tipo',
     'Título',
     'Módulo',
-    'Sprint',
     'Status',
     'Tempo',
     'Passos/Charter',
@@ -537,10 +565,12 @@ function exportCsv(cases: SavedTestCase[]): void {
   ];
   const rows = cases.map((c) =>
     [
+      c.squad,
+      c.sprint,
+      c.grupo,
       tipoLabel[c.tipo],
       c.titulo,
       c.modulo,
-      c.sprint,
       SAVED_STATUS_LABEL[c.status],
       formatTime(c.tempoMs),
       bodyText(c),

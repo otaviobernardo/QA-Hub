@@ -35,12 +35,20 @@ export default function TestCaseGenerator() {
   const {
     titulo,
     setTitulo,
+    squad,
+    setSquad,
+    sprint,
+    setSprint,
+    cardId,
+    setCardId,
     userStory,
     setUserStory,
     criteria,
     setCriteria,
     devAnalysis,
     setDevAnalysis,
+    regras,
+    setRegras,
     tipos,
     toggleTipo,
     casosPorTipo,
@@ -65,8 +73,7 @@ export default function TestCaseGenerator() {
   const [addingAt, setAddingAt] = useState<number | null>(null);
   const [savingAll, setSavingAll] = useState(false);
   const [savedAll, setSavedAll] = useState(false);
-  // Importação dos campos a partir de um card do Azure DevOps.
-  const [cardId, setCardId] = useState('');
+  // Importação dos campos a partir de um card do Azure DevOps (cardId no contexto).
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState<
     { type: 'ok' | 'error'; text: string } | null
@@ -134,6 +141,9 @@ export default function TestCaseGenerator() {
       const data = await importFromCard(pat, raw);
       // Título automático: ID do card + título do PBI.
       if (data.title) setTitulo(`${raw} - ${data.title}`);
+      // Squad e Sprint vêm automaticamente do card (Area/Iteration Path).
+      setSquad(data.squad);
+      setSprint(data.sprint);
       setUserStory(data.userStory);
       setCriteria(data.criteria);
       if (data.devAnalysis) setDevAnalysis(data.devAnalysis);
@@ -205,6 +215,7 @@ export default function TestCaseGenerator() {
         userStory: userStory.trim(),
         acceptanceCriteria: criteria.trim(),
         devAnalysis: devAnalysis.trim(),
+        regrasNegocio: regras.trim(),
         tipos: [...tipos],
         casosPorTipo,
       });
@@ -254,6 +265,7 @@ export default function TestCaseGenerator() {
     setMapaMsg(null);
     try {
       const createdByName = user.displayName?.trim() || user.email || 'QA';
+      const azureCardId = cardId.trim() || undefined;
       await Promise.all(
         cases.map((tc, idx) =>
           createSavedCase({
@@ -261,10 +273,12 @@ export default function TestCaseGenerator() {
             id: caseIds[idx],
             ...tc,
             grupo: titulo.trim(),
-            sprint: '',
+            squad: squad.trim(),
+            sprint: sprint.trim(),
             modulo: '',
             status: 'pendente',
             tempoMs: 0,
+            azureCardId,
             createdBy: user.uid,
             createdByName,
           }),
@@ -361,11 +375,14 @@ export default function TestCaseGenerator() {
     )
       return;
     setTitulo('');
+    setSquad('');
+    setSprint('');
+    setCardId('');
     setUserStory('');
     setCriteria('');
     setDevAnalysis('');
+    setRegras('');
     setCases(null);
-    setCardId('');
     setError(null);
     setImportMsg(null);
     setMapaMsg(null);
@@ -378,6 +395,7 @@ export default function TestCaseGenerator() {
     Boolean(userStory.trim()) ||
     Boolean(criteria.trim()) ||
     Boolean(devAnalysis.trim()) ||
+    Boolean(regras.trim()) ||
     Boolean(cardId.trim());
 
   return (
@@ -459,12 +477,56 @@ export default function TestCaseGenerator() {
             id="titulo"
             type="text"
             value={titulo}
-            onChange={(e) => setTitulo(e.target.value)}
+            onChange={(e) => {
+              const v = e.target.value;
+              setTitulo(v);
+              // Se o título deixou de referenciar o card importado, desvincula
+              // (evita colar/finalizar o "Mapa de testes" do card errado).
+              if (cardId && !v.trim().startsWith(cardId.trim())) setCardId('');
+            }}
             placeholder="Ex: Recuperação de senha por e-mail"
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-selbetti-green focus:ring-2 focus:ring-selbetti-green/30 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500"
           />
           <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-            Os casos salvos ficam agrupados sob este título no repositório.
+            Os casos salvos ficam agrupados sob este título (Feature) no repositório.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label
+              htmlFor="squad"
+              className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
+            >
+              Squad
+            </label>
+            <input
+              id="squad"
+              type="text"
+              value={squad}
+              onChange={(e) => setSquad(e.target.value)}
+              placeholder="Ex: DI, SQUAD SHARE-4"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-selbetti-green focus:ring-2 focus:ring-selbetti-green/30 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500"
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="sprint"
+              className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
+            >
+              Sprint
+            </label>
+            <input
+              id="sprint"
+              type="text"
+              value={sprint}
+              onChange={(e) => setSprint(e.target.value)}
+              placeholder="Ex: Sprint 24 / nome da iteração"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-selbetti-green focus:ring-2 focus:ring-selbetti-green/30 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500"
+            />
+          </div>
+          <p className="text-xs text-gray-400 dark:text-gray-500 sm:col-span-2">
+            Preenchidos automaticamente ao importar do Azure (squad e sprint do card). Edite se precisar.
           </p>
         </div>
 
@@ -518,6 +580,26 @@ export default function TestCaseGenerator() {
             onChange={(e) => setDevAnalysis(e.target.value)}
             rows={6}
             placeholder="Ex: endpoint POST /auth/reset-password, token JWT expira em 1800s, validação no front e back, integração com SendGrid."
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-selbetti-green focus:ring-2 focus:ring-selbetti-green/30 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500"
+          />
+        </div>
+
+        <div>
+          <label
+            htmlFor="regras"
+            className="mb-1 flex items-center justify-between text-sm font-medium text-gray-700 dark:text-gray-200"
+          >
+            Regras de negócio / critérios adicionais
+            <span className="text-xs font-normal text-gray-400 dark:text-gray-500">
+              O que não está explícito no card (opcional)
+            </span>
+          </label>
+          <textarea
+            id="regras"
+            value={regras}
+            onChange={(e) => setRegras(e.target.value)}
+            rows={4}
+            placeholder="Ex: cliente do tipo PJ não pode trocar de perfil; e-mail é obrigatório quando o tipo de assinante é 'E-mail'."
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-selbetti-green focus:ring-2 focus:ring-selbetti-green/30 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500"
           />
         </div>

@@ -156,6 +156,14 @@ export async function getBugs(): Promise<Bug[]> {
       evidence: data.evidence ?? '',
       assignee: data.assignee ?? '',
       vm: typeof data.vm === 'string' && data.vm ? data.vm : undefined,
+      linkedCaseId:
+        typeof data.linkedCaseId === 'string' ? data.linkedCaseId : undefined,
+      linkedCaseTitulo:
+        typeof data.linkedCaseTitulo === 'string'
+          ? data.linkedCaseTitulo
+          : undefined,
+      azureCardId:
+        typeof data.azureCardId === 'string' ? data.azureCardId : undefined,
       createdBy: data.createdBy ?? '',
       createdByName: typeof data.createdByName === 'string' ? data.createdByName : '',
       createdAt: toDate(data.createdAt),
@@ -369,10 +377,13 @@ export async function getSavedCases(): Promise<SavedTestCase[]> {
       com: optStr(data.com),
       para_validar: optStr(data.para_validar),
       e: optStr(data.e),
+      squad: typeof data.squad === 'string' ? data.squad : '',
       sprint: typeof data.sprint === 'string' ? data.sprint : '',
       modulo: typeof data.modulo === 'string' ? data.modulo : '',
       status,
       tempoMs: typeof data.tempoMs === 'number' ? data.tempoMs : 0,
+      azureCardId: optStr(data.azureCardId),
+      bugId: optStr(data.bugId),
       createdBy: typeof data.createdBy === 'string' ? data.createdBy : '',
       createdByName:
         typeof data.createdByName === 'string' ? data.createdByName : '',
@@ -384,11 +395,23 @@ export async function getSavedCases(): Promise<SavedTestCase[]> {
 
 /** Cria um caso de teste no repositório. O id (UUID) vira o id do documento. */
 export async function createSavedCase(item: NewSavedCase): Promise<void> {
-  const { id, ...rest } = item;
-  // setDoc com id do cliente = upsert: re-salvar o mesmo caso atualiza o doc
-  // (em vez de duplicar). stripUndefined evita erro com campos opcionais ausentes.
-  await setDoc(doc(db, TEST_CASES, id), {
+  const { id, status, tempoMs, ...rest } = item;
+  const ref = doc(db, TEST_CASES, id);
+  const snap = await getDoc(ref);
+  // Re-salvar o mesmo caso (id estável) preserva a EXECUÇÃO já registrada
+  // (status/tempo) e o createdAt — só atualiza o conteúdo. Evita zerar o
+  // progresso de quem já executou. stripUndefined evita erro com opcionais ausentes.
+  if (snap.exists()) {
+    await updateDoc(ref, {
+      ...stripUndefined(rest),
+      updatedAt: serverTimestamp(),
+    });
+    return;
+  }
+  await setDoc(ref, {
     ...stripUndefined(rest),
+    status,
+    tempoMs,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });

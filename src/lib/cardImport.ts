@@ -96,12 +96,63 @@ export async function writeMapaDeTestes(
   await updateFields(pat, id, { 'System.Description': html });
 }
 
+/** Task filha "Testes" (título exatamente "Testes" — não confundir com "Mapa de testes"). */
+function isTestes(item: WorkItem): boolean {
+  return field(item, 'System.Title').trim().toLowerCase() === 'testes';
+}
+
+/**
+ * Localiza a Task filha "Testes" da US (PBI) e devolve id + descrição atual +
+ * estado. Retorna null se não achar.
+ */
+export async function findTestesTask(
+  pat: string,
+  cardId: number | string,
+): Promise<MapaTask | null> {
+  const pbi = await readWorkItem(pat, cardId);
+  const ids = childIdsOf(pbi);
+  if (ids.length === 0) return null;
+  const children = await Promise.all(ids.map((id) => readWorkItem(pat, id)));
+  const testes = children.find(isTestes);
+  if (!testes) return null;
+  return {
+    id: testes.id,
+    currentHtml: field(testes, 'System.Description'),
+    state: field(testes, 'System.State'),
+  };
+}
+
 export interface CardImport {
   title: string;
   userStory: string;
   criteria: string;
   devAnalysis: string;
   foundAnalise: boolean;
+  /** Squad/time = nó do time no Area Path (ex.: "DI", "SQUAD SHARE-4"). */
+  squad: string;
+  /** Sprint = folha do Iteration Path (ex.: "[SCHERER] Integração Autentique"). */
+  sprint: string;
+  /** ID do PBI importado. */
+  cardId: string;
+}
+
+/**
+ * Squad/time a partir do Area Path. No SHARE-4 a estrutura é
+ * "Projeto\\Squad\\..." (ex.: "SHARE-4\\DI"), então o time é o 2º segmento.
+ * Cai para o 1º segmento se não houver sub-área.
+ */
+function areaTeam(p: string): string {
+  const parts = p
+    .split('\\')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return parts[1] ?? parts[0] ?? '';
+}
+
+/** Folha de um path do Azure (Area/Iteration): último segmento. */
+function pathLeaf(p: string): string {
+  const parts = p.split('\\');
+  return parts[parts.length - 1]?.trim() ?? '';
 }
 
 export async function importFromCard(
@@ -137,5 +188,8 @@ export async function importFromCard(
     criteria,
     devAnalysis,
     foundAnalise,
+    squad: areaTeam(field(pbi, 'System.AreaPath')),
+    sprint: pathLeaf(field(pbi, 'System.IterationPath')),
+    cardId: String(cardId),
   };
 }
