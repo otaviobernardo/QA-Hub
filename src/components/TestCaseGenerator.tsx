@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { v4 as uuidv4 } from 'uuid';
 import type { TestCase } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useGenerator } from '../context/GeneratorContext';
@@ -12,9 +11,8 @@ import {
   importFromCard,
   findMapaDeTestes,
   writeMapaDeTestes,
-  htmlToText,
 } from '../lib/cardImport';
-import { AzureError } from '../lib/azure';
+import { AzureError, updateState } from '../lib/azure';
 import TestCaseModal, { type TestCaseModalResult } from './TestCaseModal';
 
 /** Caso em branco usado ao adicionar um caso manualmente. */
@@ -52,8 +50,9 @@ export default function TestCaseGenerator() {
     model,
     setModel,
     cases,
+    caseIds,
     setCases,
-    addCase,
+    addCaseAt,
     updateCase,
     removeCase,
   } = useGenerator();
@@ -61,9 +60,9 @@ export default function TestCaseGenerator() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<GenError | null>(null);
   const [copied, setCopied] = useState(false);
-  // Edição de caso gerado + adição manual + salvamento do conjunto no repositório.
+  // Edição de caso gerado + inserção manual (em um índice) + salvamento.
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
-  const [adding, setAdding] = useState(false);
+  const [addingAt, setAddingAt] = useState<number | null>(null);
   const [savingAll, setSavingAll] = useState(false);
   const [savedAll, setSavedAll] = useState(false);
   // Importação dos campos a partir de um card do Azure DevOps.
@@ -133,6 +132,8 @@ export default function TestCaseGenerator() {
         return;
       }
       const data = await importFromCard(pat, raw);
+      // Título automático: ID do card + título do PBI.
+      if (data.title) setTitulo(`${raw} - ${data.title}`);
       setUserStory(data.userStory);
       setCriteria(data.criteria);
       if (data.devAnalysis) setDevAnalysis(data.devAnalysis);
@@ -254,9 +255,10 @@ export default function TestCaseGenerator() {
     try {
       const createdByName = user.displayName?.trim() || user.email || 'QA';
       await Promise.all(
-        cases.map((tc) =>
+        cases.map((tc, idx) =>
           createSavedCase({
-            id: uuidv4(),
+            // ID estável por caso: re-salvar atualiza o mesmo doc (não duplica).
+            id: caseIds[idx],
             ...tc,
             grupo: titulo.trim(),
             sprint: '',
@@ -298,31 +300,21 @@ export default function TestCaseGenerator() {
         });
         return;
       }
+      // Procura a task "Mapa de testes" que é FILHA do card informado no import.
       const mapa = await findMapaDeTestes(pat, cardId.trim());
       if (!mapa) {
         setMapaMsg({
           type: 'error',
-          text: 'A task "Mapa de testes" não foi encontrada no card.',
+          text: 'A task filha "Mapa de testes" não foi encontrada no card informado.',
         });
         return;
       }
-      // Se já houver conteúdo, confirma antes de sobrescrever.
-      if (
-        htmlToText(mapa.currentHtml).trim().length > 0 &&
-        !window.confirm(
-          'A task "Mapa de testes" já tem conteúdo. Substituir pelos casos atuais?',
-        )
-      ) {
-        setMapaMsg({
-          type: 'error',
-          text: 'Colagem cancelada — a task "Mapa de testes" já tinha conteúdo.',
-        });
-        return;
-      }
+      // Escreve os casos na descrição dessa task filha e a move para finalizado.
       await writeMapaDeTestes(pat, mapa.id, casesToHtml(cases));
+      await updateState(pat, mapa.id, 'Done');
       setMapaMsg({
         type: 'ok',
-        text: 'Casos colados na task "Mapa de testes" do card.',
+        text: `Casos salvos na task "Mapa de testes" (#${mapa.id}) e finalizada (Done).`,
       });
     } catch (err) {
       setMapaMsg({
@@ -348,14 +340,15 @@ export default function TestCaseGenerator() {
     setEditingIdx(null);
   };
 
-  // Adiciona um caso criado manualmente ao final da lista.
+  // Insere um caso criado manualmente na posição escolhida (addingAt).
   const handleAddSave = (result: TestCaseModalResult): void => {
+    if (addingAt === null) return;
     const { sprint: _s, modulo: _m, status: _st, ...core } = result;
     void _s;
     void _m;
     void _st;
-    addCase(core);
-    setAdding(false);
+    addCaseAt(addingAt, core);
+    setAddingAt(null);
     setSavedAll(false);
   };
 
@@ -401,26 +394,6 @@ export default function TestCaseGenerator() {
 
       {/* Entrada */}
       <div className="space-y-4 rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800 p-6">
-        <div>
-          <label
-            htmlFor="titulo"
-            className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
-          >
-            Título
-          </label>
-          <input
-            id="titulo"
-            type="text"
-            value={titulo}
-            onChange={(e) => setTitulo(e.target.value)}
-            placeholder="Ex: Recuperação de senha por e-mail"
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-selbetti-green focus:ring-2 focus:ring-selbetti-green/30 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500"
-          />
-          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-            Os casos salvos ficam agrupados sob este título no repositório.
-          </p>
-        </div>
-
         {/* Importar campos a partir de um card do Azure DevOps */}
         <div className="rounded-md border border-selbetti-purple/30 bg-selbetti-purple/5 p-4">
           <label
@@ -473,6 +446,26 @@ export default function TestCaseGenerator() {
               {importMsg.text}
             </div>
           )}
+        </div>
+
+        <div>
+          <label
+            htmlFor="titulo"
+            className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200"
+          >
+            Título
+          </label>
+          <input
+            id="titulo"
+            type="text"
+            value={titulo}
+            onChange={(e) => setTitulo(e.target.value)}
+            placeholder="Ex: Recuperação de senha por e-mail"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-selbetti-green focus:ring-2 focus:ring-selbetti-green/30 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500"
+          />
+          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+            Os casos salvos ficam agrupados sob este título no repositório.
+          </p>
         </div>
 
         <div>
@@ -695,13 +688,6 @@ export default function TestCaseGenerator() {
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => setAdding(true)}
-                className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700"
-              >
-                + Adicionar caso
-              </button>
-              <button
-                type="button"
                 onClick={handleCopy}
                 className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700"
               >
@@ -752,12 +738,11 @@ export default function TestCaseGenerator() {
             </div>
           )}
 
-          <div className="space-y-3">
+          <div className="space-y-2">
             {cases.map((tc, idx) => (
-              <article
-                key={idx}
-                className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800"
-              >
+              <Fragment key={caseIds[idx] ?? idx}>
+                <InsertCaseRow onClick={() => setAddingAt(idx)} />
+                <article className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
                 <div className="flex flex-wrap items-center gap-2">
                   <span
                     className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${tipoBadge[tc.tipo]}`}
@@ -848,8 +833,10 @@ export default function TestCaseGenerator() {
                     Excluir
                   </button>
                 </div>
-              </article>
+                </article>
+              </Fragment>
             ))}
+            <InsertCaseRow onClick={() => setAddingAt(cases.length)} />
           </div>
         </div>
       )}
@@ -864,15 +851,32 @@ export default function TestCaseGenerator() {
         />
       )}
 
-      {adding && (
+      {addingAt !== null && (
         <TestCaseModal
           value={BLANK_CASE}
           withMeta={false}
           title="Adicionar caso"
-          onClose={() => setAdding(false)}
+          onClose={() => setAddingAt(null)}
           onSave={handleAddSave}
         />
       )}
+    </div>
+  );
+}
+
+/** Divisor com botão "+ adicionar caso" para inserir um caso naquele intervalo. */
+function InsertCaseRow({ onClick }: { onClick: () => void }) {
+  return (
+    <div className="flex items-center gap-2 py-1">
+      <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
+      <button
+        type="button"
+        onClick={onClick}
+        className="inline-flex items-center gap-1 rounded-full border border-dashed border-gray-300 px-3 py-1 text-xs font-medium text-gray-500 transition-colors hover:border-selbetti-green hover:bg-selbetti-green/10 hover:text-selbetti-green dark:border-gray-600 dark:text-gray-400 dark:hover:text-selbetti-green"
+      >
+        <span className="text-base leading-none">+</span> adicionar caso
+      </button>
+      <div className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
     </div>
   );
 }

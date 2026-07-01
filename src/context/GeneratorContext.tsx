@@ -5,6 +5,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import type { TestCase } from '../types';
 import type { ProviderId } from '../lib/providers';
 
@@ -35,6 +36,8 @@ interface PersistedState {
   provider: ProviderId | '';
   model: string;
   cases: TestCase[] | null;
+  /** IDs estáveis por caso (mesmo índice de `cases`) para upsert no repositório. */
+  caseIds: string[];
   statuses: Record<number, CaseStatus>;
   timers: Record<number, TimerState>;
 }
@@ -49,6 +52,7 @@ const INITIAL: PersistedState = {
   provider: '',
   model: '',
   cases: null,
+  caseIds: [],
   statuses: {},
   timers: {},
 };
@@ -58,7 +62,13 @@ function loadState(): PersistedState {
     const raw = sessionStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<PersistedState>;
-      return { ...INITIAL, ...parsed };
+      const merged = { ...INITIAL, ...parsed };
+      // Garante caseIds alinhado com cases (migração de estados antigos).
+      const n = merged.cases?.length ?? 0;
+      if (merged.caseIds.length !== n) {
+        merged.caseIds = Array.from({ length: n }, () => uuidv4());
+      }
+      return merged;
     }
   } catch {
     // sessionStorage indisponível ou JSON inválido — usa o estado inicial.
@@ -84,10 +94,14 @@ interface GeneratorContextValue {
   model: string;
   setModel: (v: string) => void;
   cases: TestCase[] | null;
+  /** IDs estáveis por caso (mesmo índice de `cases`). */
+  caseIds: string[];
   /** Define os casos gerados e zera status e cronômetros (cada geração recomeça). */
   setCases: (cases: TestCase[] | null) => void;
   /** Adiciona um caso manualmente ao final da lista. */
   addCase: (tc: TestCase) => void;
+  /** Insere um caso na posição `index` (0 = no topo). */
+  addCaseAt: (index: number, tc: TestCase) => void;
   /** Atualiza um caso gerado in-place (edição antes de salvar). */
   updateCase: (index: number, updated: TestCase) => void;
   /** Remove um caso gerado, reindexando status e cronômetros. */
@@ -145,9 +159,29 @@ export function GeneratorProvider({ children }: { children: ReactNode }) {
     model: state.model,
     setModel: (v) => patch({ model: v }),
     cases: state.cases,
-    setCases: (cases) => patch({ cases, statuses: {}, timers: {} }),
+    caseIds: state.caseIds,
+    setCases: (cases) =>
+      patch({
+        cases,
+        caseIds: (cases ?? []).map(() => uuidv4()),
+        statuses: {},
+        timers: {},
+      }),
     addCase: (tc) =>
-      setState((s) => ({ ...s, cases: [...(s.cases ?? []), tc] })),
+      setState((s) => ({
+        ...s,
+        cases: [...(s.cases ?? []), tc],
+        caseIds: [...s.caseIds, uuidv4()],
+      })),
+    addCaseAt: (index, tc) =>
+      setState((s) => {
+        const cases = (s.cases ?? []).slice();
+        const caseIds = s.caseIds.slice();
+        const at = Math.max(0, Math.min(index, cases.length));
+        cases.splice(at, 0, tc);
+        caseIds.splice(at, 0, uuidv4());
+        return { ...s, cases, caseIds };
+      }),
     updateCase: (index, updated) =>
       setState((s) => {
         if (!s.cases) return s;
@@ -160,6 +194,8 @@ export function GeneratorProvider({ children }: { children: ReactNode }) {
         if (!s.cases) return s;
         const cases = s.cases.slice();
         cases.splice(index, 1);
+        const caseIds = s.caseIds.slice();
+        caseIds.splice(index, 1);
         // Reindexa os mapas (chaves > index descem 1; a chave index é removida).
         const reindex = <T,>(m: Record<number, T>): Record<number, T> => {
           const out: Record<number, T> = {};
@@ -173,6 +209,7 @@ export function GeneratorProvider({ children }: { children: ReactNode }) {
         return {
           ...s,
           cases,
+          caseIds,
           statuses: reindex(s.statuses),
           timers: reindex(s.timers),
         };
