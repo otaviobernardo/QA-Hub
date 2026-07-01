@@ -8,7 +8,13 @@
  * Todos SEM dono e no estado inicial do processo (New). Best-effort: o chamador
  * trata falhas sem perder o bug já salvo.
  */
-import { createWorkItem, apiWorkItemUrl, REL_PARENT } from './azure';
+import {
+  createWorkItem,
+  readWorkItem,
+  field,
+  apiWorkItemUrl,
+  REL_PARENT,
+} from './azure';
 
 /** Os 3 cards a criar: prefixo do título + tipo do work item no Azure. */
 const CARDS: { prefixo: string; type: string }[] = [
@@ -28,6 +34,12 @@ export async function createBugTasks(
   parentId: number,
   bugTitle: string,
 ): Promise<BugTasksResult> {
+  // Copia Área e Iteration (sprint) do PBI pai — sem isso os cards não aparecem
+  // no taskboard do time/sprint, ficando "soltos" só na lista de filhos.
+  const pbi = await readWorkItem(pat, parentId);
+  const areaPath = field(pbi, 'System.AreaPath') || undefined;
+  const iterationPath = field(pbi, 'System.IterationPath') || undefined;
+
   const parentRel = [{ rel: REL_PARENT, url: apiWorkItemUrl(parentId) }];
 
   // Sequencial para respeitar limites e manter a ordem BUG → CR → Teste.
@@ -36,6 +48,8 @@ export async function createBugTasks(
     const wi = await createWorkItem(pat, {
       type: c.type,
       title: `${c.prefixo} | ${bugTitle}`,
+      areaPath,
+      iterationPath,
       relations: parentRel,
       // Sem dono e no estado inicial do processo (não força o estado).
     });
