@@ -429,6 +429,7 @@ export default function SavedTestCases() {
                               />
                             )}
                           </th>
+                          <th className="w-10 px-4 py-2 font-medium">#</th>
                           <th className="px-4 py-2 font-medium">Título</th>
                           <th className="px-4 py-2 font-medium">Tipo</th>
                           <th className="px-4 py-2 font-medium">Módulo</th>
@@ -438,7 +439,7 @@ export default function SavedTestCases() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                        {items.map((c) => (
+                        {items.map((c, i) => (
                           <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
                             <td className="px-4 py-2">
                               <input
@@ -448,6 +449,9 @@ export default function SavedTestCases() {
                                 aria-label={`Selecionar ${c.titulo}`}
                                 className="h-4 w-4 rounded border-gray-300 text-selbetti-green focus:ring-selbetti-green"
                               />
+                            </td>
+                            <td className="px-4 py-2 font-mono text-xs text-gray-400 dark:text-gray-500">
+                              {i + 1}
                             </td>
                             <td className="max-w-xs truncate px-4 py-2 font-medium text-gray-800 dark:text-gray-100">
                               {c.titulo}

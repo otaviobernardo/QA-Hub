@@ -483,7 +483,7 @@ export default function Execucao() {
                       {cMsg.text}
                     </div>
                   )}
-                  {items.map((c) => {
+                  {items.map((c, i) => {
                     const isRunning = Boolean(running[c.id]);
                     const linkedBugs = bugsByCase.get(c.id) ?? [];
                     return (
@@ -498,6 +498,9 @@ export default function Execucao() {
                         }`}
                       >
                         <div className="flex flex-wrap items-center gap-2">
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                            {i + 1}
+                          </span>
                           <span
                             className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${tipoBadge[c.tipo]}`}
                           >
