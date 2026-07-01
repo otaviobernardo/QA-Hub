@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import type { Bug, BugStatus, Severity } from '../types';
 import { deleteBug } from '../lib/db';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { STATUSES, SEVERITIES, severityBadge, statusBadge } from '../lib/bugOptions';
 
 const PAGE_SIZE = 20;
@@ -15,6 +17,8 @@ interface BugTableProps {
 
 export default function BugTable({ bugs, onView, onEdit, onChanged }: BugTableProps) {
   const { user } = useAuth();
+  const { showToast } = useToast();
+  const confirm = useConfirm();
   const uid = user?.uid ?? '';
 
   const [search, setSearch] = useState('');
@@ -61,16 +65,20 @@ export default function BugTable({ bugs, onView, onEdit, onChanged }: BugTablePr
   const resetPage = () => setPage(1);
 
   const handleDelete = async (bug: Bug): Promise<void> => {
-    const confirmed = window.confirm(
-      `Excluir o bug "${bug.title}"? Esta ação não pode ser desfeita.`,
-    );
+    const confirmed = await confirm({
+      title: 'Excluir bug',
+      message: `Excluir o bug "${bug.title}"? Esta ação não pode ser desfeita.`,
+      confirmLabel: 'Excluir',
+      cancelLabel: 'Cancelar',
+      tone: 'red',
+    });
     if (!confirmed) return;
     setDeletingId(bug.id);
     try {
       await deleteBug(bug.id);
       onChanged();
     } catch {
-      window.alert('Não foi possível excluir o bug. Tente novamente.');
+      showToast('Não foi possível excluir o bug. Tente novamente.', 'error');
     } finally {
       setDeletingId(null);
     }

@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import type { SavedTestCase, SavedCaseStatus, Bug } from '../types';
 import { getSavedCases, updateSavedCase, getUserProfile, getBugs } from '../lib/db';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { updateFields, updateState, AzureError } from '../lib/azure';
 import { findTestesTask } from '../lib/cardImport';
 import {
@@ -60,6 +62,8 @@ function loadRunning(): Record<string, number> {
 
 export default function Execucao() {
   const { user } = useAuth();
+  const { showToast } = useToast();
+  const confirm = useConfirm();
   const [cases, setCases] = useState<SavedTestCase[]>([]);
   const [bugs, setBugs] = useState<Bug[]>([]);
   const [loading, setLoading] = useState(true);
@@ -202,13 +206,20 @@ export default function Execucao() {
     try {
       await updateSavedCase(c.id, { tempoMs });
     } catch {
-      window.alert('Não foi possível salvar o tempo. Tente novamente.');
+      showToast('Não foi possível salvar o tempo. Tente novamente.', 'error');
     }
   };
 
   const resetTimer = async (c: SavedTestCase): Promise<void> => {
     if (elapsedOf(c) === 0) return;
-    if (!window.confirm(`Zerar o tempo do caso "${c.titulo}"?`)) return;
+    const ok = await confirm({
+      title: 'Zerar tempo',
+      message: `Zerar o tempo do caso "${c.titulo}"?`,
+      confirmLabel: 'Zerar',
+      cancelLabel: 'Cancelar',
+      tone: 'red',
+    });
+    if (!ok) return;
     // Para o cronômetro, se estiver rodando, e zera o tempo acumulado.
     setRunning((prev) => {
       const next = { ...prev };
@@ -219,7 +230,7 @@ export default function Execucao() {
     try {
       await updateSavedCase(c.id, { tempoMs: 0 });
     } catch {
-      window.alert('Não foi possível zerar o tempo. Tente novamente.');
+      showToast('Não foi possível zerar o tempo. Tente novamente.', 'error');
     }
   };
 
@@ -230,7 +241,7 @@ export default function Execucao() {
       await updateSavedCase(c.id, { status: next });
     } catch {
       patchLocal(c.id, { status: c.status });
-      window.alert('Não foi possível salvar o status. Tente novamente.');
+      showToast('Não foi possível salvar o status. Tente novamente.', 'error');
     }
   };
 
@@ -243,12 +254,13 @@ export default function Execucao() {
     totalMs: number,
   ): Promise<void> => {
     if (!user) return;
-    if (
-      !window.confirm(
-        `Concluir o card "Testes" da US #${cardId} e registrar o tempo total ${formatTime(totalMs)}?`,
-      )
-    )
-      return;
+    const ok = await confirm({
+      title: 'Concluir card "Testes"',
+      message: `Concluir o card "Testes" da US #${cardId} e registrar o tempo total ${formatTime(totalMs)}?`,
+      confirmLabel: 'Concluir',
+      cancelLabel: 'Cancelar',
+    });
+    if (!ok) return;
     setConcluindo(grupo);
     setConcluirMsg((m) => {
       const n = { ...m };

@@ -8,6 +8,8 @@ import {
   deleteSprintNote,
 } from '../lib/db';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 
 interface SprintNotesProps {
   /** Sprints existentes nos bugs, para o select da nova nota. */
@@ -21,6 +23,8 @@ const dateFmt = new Intl.DateTimeFormat('pt-BR', {
 
 export default function SprintNotes({ sprints }: SprintNotesProps) {
   const { user } = useAuth();
+  const { showToast } = useToast();
+  const confirm = useConfirm();
   const uid = user?.uid ?? '';
   const displayName = user?.displayName?.trim() || user?.email || 'QA';
 
@@ -107,17 +111,24 @@ export default function SprintNotes({ sprints }: SprintNotesProps) {
       setEditingId(null);
       await load();
     } catch {
-      window.alert('Não foi possível editar a observação.');
+      showToast('Não foi possível editar a observação.', 'error');
     }
   };
 
   const handleDelete = async (note: SprintNote): Promise<void> => {
-    if (!window.confirm('Excluir esta observação?')) return;
+    const ok = await confirm({
+      title: 'Excluir observação',
+      message: 'Excluir esta observação?',
+      confirmLabel: 'Excluir',
+      cancelLabel: 'Cancelar',
+      tone: 'red',
+    });
+    if (!ok) return;
     try {
       await deleteSprintNote(note.id);
       await load();
     } catch {
-      window.alert('Não foi possível excluir a observação.');
+      showToast('Não foi possível excluir a observação.', 'error');
     }
   };
 

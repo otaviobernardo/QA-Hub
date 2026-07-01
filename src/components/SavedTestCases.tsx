@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { SavedTestCase, SavedCaseStatus, TestCase } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import {
   getSavedCases,
   createSavedCase,
@@ -56,6 +58,8 @@ const emptyCase: TestCase & {
 
 export default function SavedTestCases() {
   const { user } = useAuth();
+  const { showToast } = useToast();
+  const confirm = useConfirm();
   const uid = user?.uid ?? '';
   const displayName = user?.displayName?.trim() || user?.email || 'QA';
 
@@ -190,31 +194,40 @@ export default function SavedTestCases() {
       setModal(null);
       await load();
     } catch {
-      window.alert('Não foi possível salvar o caso. Tente novamente.');
+      showToast('Não foi possível salvar o caso. Tente novamente.', 'error');
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = async (item: SavedTestCase): Promise<void> => {
-    if (!window.confirm(`Excluir o caso "${item.titulo}"?`)) return;
+    const ok = await confirm({
+      title: 'Excluir caso',
+      message: `Excluir o caso "${item.titulo}"?`,
+      confirmLabel: 'Excluir',
+      cancelLabel: 'Cancelar',
+      tone: 'red',
+    });
+    if (!ok) return;
     try {
       await deleteSavedCase(item.id);
       await load();
     } catch {
-      window.alert('Não foi possível excluir o caso.');
+      showToast('Não foi possível excluir o caso.', 'error');
     }
   };
 
   const handleBulkDelete = async (): Promise<void> => {
     const ids = [...selected];
     if (ids.length === 0) return;
-    if (
-      !window.confirm(
-        `Excluir ${ids.length} caso(s) selecionado(s)? Esta ação não pode ser desfeita.`,
-      )
-    )
-      return;
+    const ok = await confirm({
+      title: 'Excluir em lote',
+      message: `Excluir ${ids.length} caso(s) selecionado(s)? Esta ação não pode ser desfeita.`,
+      confirmLabel: 'Excluir',
+      cancelLabel: 'Cancelar',
+      tone: 'red',
+    });
+    if (!ok) return;
     setBulkDeleting(true);
     try {
       // allSettled: reporta exatamente quantos falharam (exclusão parcial).
@@ -224,12 +237,15 @@ export default function SavedTestCases() {
       const failed = results.filter((r) => r.status === 'rejected').length;
       await load();
       if (failed > 0) {
-        window.alert(
+        showToast(
           `${ids.length - failed} de ${ids.length} caso(s) excluído(s). ${failed} falhou(aram).`,
+          'error',
         );
+      } else {
+        showToast(`${ids.length} caso(s) excluído(s).`, 'success');
       }
     } catch {
-      window.alert('Não foi possível excluir os casos selecionados.');
+      showToast('Não foi possível excluir os casos selecionados.', 'error');
     } finally {
       setBulkDeleting(false);
     }

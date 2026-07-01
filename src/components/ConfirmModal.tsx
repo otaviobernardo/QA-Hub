@@ -9,7 +9,7 @@ interface ConfirmModalProps {
   onCancel: () => void;
   busy?: boolean;
   /** Estilo do botão de confirmar. */
-  tone?: 'green' | 'purple';
+  tone?: 'green' | 'red' | 'purple';
 }
 
 /** Diálogo de confirmação simples e reutilizável (dois botões). */
@@ -26,7 +26,9 @@ export default function ConfirmModal({
   const confirmClass =
     tone === 'purple'
       ? 'bg-selbetti-purple hover:bg-selbetti-purple/90'
-      : 'bg-selbetti-green hover:bg-selbetti-green/90';
+      : tone === 'red'
+        ? 'bg-red-600 hover:bg-red-700'
+        : 'bg-selbetti-green hover:bg-selbetti-green/90';
 
   return (
     <div

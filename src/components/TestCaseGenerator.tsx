@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { TestCase } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { useGenerator } from '../context/GeneratorContext';
 import { getUserProfile, createSavedCase } from '../lib/db';
 import { generateTestCases, TestCaseGenError } from '../lib/ai';
@@ -33,6 +34,7 @@ interface GenError {
 
 export default function TestCaseGenerator() {
   const { user, apiKeys } = useAuth();
+  const { showToast } = useToast();
   const {
     titulo,
     setTitulo,
@@ -310,7 +312,7 @@ export default function TestCaseGenerator() {
       );
       setSavedAll(true);
     } catch {
-      window.alert('Não foi possível salvar os casos no repositório.');
+      showToast('Não foi possível salvar os casos no repositório.', 'error');
       setSavingAll(false);
       return;
     }
