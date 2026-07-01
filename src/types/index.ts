@@ -16,6 +16,10 @@ export interface Bug {
   evidence: string;
   assignee: string;            // nome ou uid do QA responsável
   vm?: string;                 // VM usada (somente quando environment === 'Homologação')
+  // Origem: quando o bug nasce de um caso de teste que falhou na execução.
+  linkedCaseId?: string;       // id do SavedTestCase de origem
+  linkedCaseTitulo?: string;   // título do caso (para exibição)
+  azureCardId?: string;        // ID da US (PBI) de origem
   createdBy: string;           // uid do usuário que criou
   createdByName: string;       // nome de exibição do criador
   createdAt: Date;
@@ -69,6 +73,7 @@ export interface SavedTestCase extends TestCase {
   status: SavedCaseStatus;
   tempoMs: number;             // tempo de execução registrado (cronômetro)
   azureCardId?: string;        // ID do PBI de origem (quando importado do Azure)
+  bugId?: string;              // bug aberto a partir deste caso (quando falhou)
   createdBy: string;
   createdByName: string;
   createdAt: Date;

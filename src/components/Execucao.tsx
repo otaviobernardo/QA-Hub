@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { SavedTestCase, SavedCaseStatus } from '../types';
 import { getSavedCases, updateSavedCase, getUserProfile } from '../lib/db';
 import { useAuth } from '../context/AuthContext';
@@ -10,6 +11,30 @@ import {
   savedStatusBadge,
   SAVED_STATUS_LABEL,
 } from '../lib/testCaseOptions';
+import BugModal from './BugModal';
+
+/** Monta a descrição do bug a partir de um caso que falhou. */
+function bugBodyFromCase(c: SavedTestCase): string {
+  const corpo =
+    c.tipo === 'exploratorio'
+      ? [
+          c.explore && `EXPLORE: ${c.explore}`,
+          c.com && `COM: ${c.com}`,
+          c.para_validar && `PARA VALIDAR: ${c.para_validar}`,
+          c.e && `E: ${c.e}`,
+        ]
+          .filter(Boolean)
+          .join('\n')
+      : c.passos.map((p, i) => `${i + 1}. ${p}`).join('\n');
+  return [
+    `Caso de teste: ${c.titulo}`,
+    corpo && `Passos:\n${corpo}`,
+    c.resultado_esperado && `Resultado esperado: ${c.resultado_esperado}`,
+    'Resultado obtido: FALHOU na execução.',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+}
 
 function formatTime(ms: number): string {
   const totalSec = Math.floor(ms / 1000);
@@ -38,6 +63,9 @@ export default function Execucao() {
   const [cases, setCases] = useState<SavedTestCase[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+
+  // Caso que falhou e vai abrir um bug (modal pré-preenchido).
+  const [bugCase, setBugCase] = useState<SavedTestCase | null>(null);
 
   // Conclusão do card "Testes" da US: estado de processamento e mensagens por grupo.
   const [concluindo, setConcluindo] = useState<string | null>(null);
@@ -179,6 +207,16 @@ export default function Execucao() {
     } catch {
       patchLocal(c.id, { status: c.status });
       window.alert('Não foi possível salvar o status. Tente novamente.');
+    }
+  };
+
+  // Vincula o bug recém-criado ao caso de origem (dois lados).
+  const linkBug = async (caseId: string, bugId: string): Promise<void> => {
+    patchLocal(caseId, { bugId });
+    try {
+      await updateSavedCase(caseId, { bugId });
+    } catch {
+      // best-effort: o bug foi criado; só o vínculo no caso pode não ter salvo.
     }
   };
 
@@ -580,6 +618,28 @@ export default function Execucao() {
                             </button>
                           </div>
                         </div>
+
+                        {(c.status === 'fail' || c.bugId) && (
+                          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3 dark:border-gray-700">
+                            {c.bugId ? (
+                              <Link
+                                to="/bugs"
+                                title="Bug aberto a partir deste caso — abrir a aba Bugs"
+                                className="inline-flex items-center gap-1 rounded-md border border-red-300 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 transition-colors hover:bg-red-100 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-300"
+                              >
+                                🐞 Bug aberto
+                              </Link>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setBugCase(c)}
+                                className="inline-flex items-center gap-1 rounded-md border border-red-300 px-3 py-1 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 dark:border-red-500/40 dark:text-red-400 dark:hover:bg-red-500/10"
+                              >
+                                🐞 Abrir bug
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </article>
                     );
                   })}
@@ -589,6 +649,26 @@ export default function Execucao() {
           );
         })}
       </div>
+      )}
+
+      {bugCase && (
+        <BugModal
+          mode="create"
+          initial={{
+            title: `[${bugCase.squad || 'Caso'}] ${bugCase.titulo}`,
+            module: bugCase.modulo,
+            sprint: bugCase.sprint,
+            description: bugBodyFromCase(bugCase),
+          }}
+          link={{
+            caseId: bugCase.id,
+            caseTitulo: bugCase.titulo,
+            azureCardId: bugCase.azureCardId,
+          }}
+          onClose={() => setBugCase(null)}
+          onSaved={() => {}}
+          onCreated={(bugId) => void linkBug(bugCase.id, bugId)}
+        />
       )}
     </div>
   );

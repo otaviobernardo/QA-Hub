@@ -156,6 +156,14 @@ export async function getBugs(): Promise<Bug[]> {
       evidence: data.evidence ?? '',
       assignee: data.assignee ?? '',
       vm: typeof data.vm === 'string' && data.vm ? data.vm : undefined,
+      linkedCaseId:
+        typeof data.linkedCaseId === 'string' ? data.linkedCaseId : undefined,
+      linkedCaseTitulo:
+        typeof data.linkedCaseTitulo === 'string'
+          ? data.linkedCaseTitulo
+          : undefined,
+      azureCardId:
+        typeof data.azureCardId === 'string' ? data.azureCardId : undefined,
       createdBy: data.createdBy ?? '',
       createdByName: typeof data.createdByName === 'string' ? data.createdByName : '',
       createdAt: toDate(data.createdAt),
@@ -375,6 +383,7 @@ export async function getSavedCases(): Promise<SavedTestCase[]> {
       status,
       tempoMs: typeof data.tempoMs === 'number' ? data.tempoMs : 0,
       azureCardId: optStr(data.azureCardId),
+      bugId: optStr(data.bugId),
       createdBy: typeof data.createdBy === 'string' ? data.createdBy : '',
       createdByName:
         typeof data.createdByName === 'string' ? data.createdByName : '',

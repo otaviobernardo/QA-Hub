@@ -25,8 +25,14 @@ export type BugModalMode = 'view' | 'create' | 'edit';
 interface BugModalProps {
   mode: BugModalMode;
   bug?: Bug; // obrigatório em "view" e "edit"
+  /** Valores iniciais no modo "create" (ex.: bug aberto a partir de um caso). */
+  initial?: Partial<FormState>;
+  /** Vínculo de origem gravado no bug (caso de teste / US) no modo "create". */
+  link?: { caseId: string; caseTitulo?: string; azureCardId?: string };
   onClose: () => void;
   onSaved: () => void; // chamado após criar/editar com sucesso
+  /** Chamado com o id do bug recém-criado (para vincular no caso de origem). */
+  onCreated?: (bugId: string) => void;
 }
 
 interface FormState {
@@ -51,27 +57,39 @@ const REQUIRED_FIELDS: (keyof FormState)[] = [
   'description',
 ];
 
-function initialForm(bug?: Bug, defaultAssignee?: string): FormState {
+function initialForm(
+  bug?: Bug,
+  defaultAssignee?: string,
+  initial?: Partial<FormState>,
+): FormState {
   return {
-    title: bug?.title ?? '',
-    module: bug?.module ?? '',
-    sprint: bug?.sprint ?? '',
-    severity: bug?.severity ?? 'Médio',
-    priority: bug?.priority ?? 'Média',
-    environment: bug?.environment ?? 'Homologação',
-    status: bug?.status ?? 'Aberto',
-    description: bug?.description ?? '',
-    evidence: bug?.evidence ?? '',
-    assignee: bug?.assignee ?? defaultAssignee ?? '',
-    vm: bug?.vm ?? '',
+    title: initial?.title ?? bug?.title ?? '',
+    module: initial?.module ?? bug?.module ?? '',
+    sprint: initial?.sprint ?? bug?.sprint ?? '',
+    severity: initial?.severity ?? bug?.severity ?? 'Médio',
+    priority: initial?.priority ?? bug?.priority ?? 'Média',
+    environment: initial?.environment ?? bug?.environment ?? 'Homologação',
+    status: initial?.status ?? bug?.status ?? 'Aberto',
+    description: initial?.description ?? bug?.description ?? '',
+    evidence: initial?.evidence ?? bug?.evidence ?? '',
+    assignee: initial?.assignee ?? bug?.assignee ?? defaultAssignee ?? '',
+    vm: initial?.vm ?? bug?.vm ?? '',
   };
 }
 
-export default function BugModal({ mode, bug, onClose, onSaved }: BugModalProps) {
+export default function BugModal({
+  mode,
+  bug,
+  initial,
+  link,
+  onClose,
+  onSaved,
+  onCreated,
+}: BugModalProps) {
   const { user } = useAuth();
   const displayName = user?.displayName?.trim() || user?.email || '';
   const [form, setForm] = useState<FormState>(
-    initialForm(bug, mode === 'create' ? displayName : undefined),
+    initialForm(bug, mode === 'create' ? displayName : undefined, initial),
   );
   const [errors, setErrors] = useState<Set<keyof FormState>>(new Set());
   const [saving, setSaving] = useState(false);
@@ -109,13 +127,18 @@ export default function BugModal({ mode, bug, onClose, onSaved }: BugModalProps)
     try {
       const vmValue = form.environment === 'Homologação' && form.vm ? form.vm : undefined;
       if (mode === 'create') {
+        const id = uuidv4();
         await createBug({
-          id: uuidv4(),
+          id,
           ...form,
           vm: vmValue,
+          linkedCaseId: link?.caseId,
+          linkedCaseTitulo: link?.caseTitulo,
+          azureCardId: link?.azureCardId,
           createdBy: user.uid,
           createdByName: user.displayName?.trim() || user.email || '',
         });
+        onCreated?.(id);
       } else if (mode === 'edit' && bug) {
         await updateBug(bug.id, { ...form, vm: vmValue });
       }
