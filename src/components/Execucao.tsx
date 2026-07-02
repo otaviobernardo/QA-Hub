@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { SavedTestCase, SavedCaseStatus } from '../types';
-import { getSavedCases, updateSavedCase, getUserProfile } from '../lib/db';
+import type { SavedTestCase, SavedCaseStatus, Bug } from '../types';
+import { getSavedCases, updateSavedCase, getUserProfile, getBugs } from '../lib/db';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { updateFields, updateState, AzureError } from '../lib/azure';
 import { findTestesTask } from '../lib/cardImport';
 import {
@@ -60,7 +62,10 @@ function loadRunning(): Record<string, number> {
 
 export default function Execucao() {
   const { user } = useAuth();
+  const { showToast } = useToast();
+  const confirm = useConfirm();
   const [cases, setCases] = useState<SavedTestCase[]>([]);
+  const [bugs, setBugs] = useState<Bug[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
@@ -96,7 +101,9 @@ export default function Execucao() {
     setLoading(true);
     setLoadError(false);
     try {
-      setCases(await getSavedCases());
+      const [cs, bs] = await Promise.all([getSavedCases(), getBugs()]);
+      setCases(cs);
+      setBugs(bs);
     } catch {
       setLoadError(true);
     } finally {
@@ -104,9 +111,29 @@ export default function Execucao() {
     }
   };
 
+  const reloadBugs = async (): Promise<void> => {
+    try {
+      setBugs(await getBugs());
+    } catch {
+      // mantém a lista anterior se falhar.
+    }
+  };
+
   useEffect(() => {
     void load();
   }, []);
+
+  // Bugs vinculados a cada caso (derivados de linkedCaseId) — bug excluído some.
+  const bugsByCase = useMemo(() => {
+    const map = new Map<string, Bug[]>();
+    for (const b of bugs) {
+      if (!b.linkedCaseId) continue;
+      const arr = map.get(b.linkedCaseId);
+      if (arr) arr.push(b);
+      else map.set(b.linkedCaseId, [b]);
+    }
+    return map;
+  }, [bugs]);
 
   const anyRunning = Object.keys(running).length > 0;
   useEffect(() => {
@@ -179,13 +206,20 @@ export default function Execucao() {
     try {
       await updateSavedCase(c.id, { tempoMs });
     } catch {
-      window.alert('Não foi possível salvar o tempo. Tente novamente.');
+      showToast('Não foi possível salvar o tempo. Tente novamente.', 'error');
     }
   };
 
   const resetTimer = async (c: SavedTestCase): Promise<void> => {
     if (elapsedOf(c) === 0) return;
-    if (!window.confirm(`Zerar o tempo do caso "${c.titulo}"?`)) return;
+    const ok = await confirm({
+      title: 'Zerar tempo',
+      message: `Zerar o tempo do caso "${c.titulo}"?`,
+      confirmLabel: 'Zerar',
+      cancelLabel: 'Cancelar',
+      tone: 'red',
+    });
+    if (!ok) return;
     // Para o cronômetro, se estiver rodando, e zera o tempo acumulado.
     setRunning((prev) => {
       const next = { ...prev };
@@ -196,7 +230,7 @@ export default function Execucao() {
     try {
       await updateSavedCase(c.id, { tempoMs: 0 });
     } catch {
-      window.alert('Não foi possível zerar o tempo. Tente novamente.');
+      showToast('Não foi possível zerar o tempo. Tente novamente.', 'error');
     }
   };
 
@@ -207,17 +241,91 @@ export default function Execucao() {
       await updateSavedCase(c.id, { status: next });
     } catch {
       patchLocal(c.id, { status: c.status });
-      window.alert('Não foi possível salvar o status. Tente novamente.');
+      showToast('Não foi possível salvar o status. Tente novamente.', 'error');
     }
   };
 
-  // Vincula o bug recém-criado ao caso de origem (dois lados).
-  const linkBug = async (caseId: string, bugId: string): Promise<void> => {
-    patchLocal(caseId, { bugId });
+  // Atribui a task ao QA logado (best-effort — não bloqueia se o e-mail não resolver).
+  const assignToQa = async (pat: string, id: number): Promise<void> => {
+    if (!user?.email) return;
     try {
-      await updateSavedCase(caseId, { bugId });
+      await updateFields(pat, id, { 'System.AssignedTo': user.email });
     } catch {
-      // best-effort: o bug foi criado; só o vínculo no caso pode não ter salvo.
+      // o e-mail pode não corresponder a um usuário do Azure; o move segue válido.
+    }
+  };
+
+  // Inicia os testes: move a task "Testes" da US para Committed (em andamento),
+  // no nome do QA. Não repete se já estiver em Committed/Done.
+  const iniciarTestes = async (grupo: string, cardId: string): Promise<void> => {
+    if (!user) return;
+    const ok = await confirm({
+      title: 'Iniciar card "Testes"',
+      message: `Mover o card "Testes" da US #${cardId} para Committed (em andamento) no seu nome?`,
+      confirmLabel: 'Iniciar',
+      cancelLabel: 'Cancelar',
+      tone: 'purple',
+    });
+    if (!ok) return;
+    setConcluindo(grupo);
+    setConcluirMsg((m) => {
+      const n = { ...m };
+      delete n[grupo];
+      return n;
+    });
+    try {
+      const profile = await getUserProfile(user.uid);
+      const pat = profile?.azurePat?.trim();
+      if (!pat) {
+        setConcluirMsg((m) => ({
+          ...m,
+          [grupo]: {
+            type: 'error',
+            text: 'Configure seu PAT do Azure em Configurações.',
+          },
+        }));
+        return;
+      }
+      const testes = await findTestesTask(pat, cardId);
+      if (!testes) {
+        setConcluirMsg((m) => ({
+          ...m,
+          [grupo]: { type: 'error', text: 'Task "Testes" não encontrada na US.' },
+        }));
+        return;
+      }
+      if (testes.state === 'Committed' || testes.state === 'Done') {
+        setConcluirMsg((m) => ({
+          ...m,
+          [grupo]: {
+            type: 'ok',
+            text: `Card "Testes" (#${testes.id}) já está em ${testes.state}.`,
+          },
+        }));
+        return;
+      }
+      await updateState(pat, testes.id, 'Committed');
+      await assignToQa(pat, testes.id);
+      setConcluirMsg((m) => ({
+        ...m,
+        [grupo]: {
+          type: 'ok',
+          text: `Card "Testes" (#${testes.id}) movido para Committed no seu nome.`,
+        },
+      }));
+    } catch (err) {
+      setConcluirMsg((m) => ({
+        ...m,
+        [grupo]: {
+          type: 'error',
+          text:
+            err instanceof AzureError
+              ? err.message
+              : 'Falha ao iniciar o card "Testes".',
+        },
+      }));
+    } finally {
+      setConcluindo(null);
     }
   };
 
@@ -230,12 +338,13 @@ export default function Execucao() {
     totalMs: number,
   ): Promise<void> => {
     if (!user) return;
-    if (
-      !window.confirm(
-        `Concluir o card "Testes" da US #${cardId} e registrar o tempo total ${formatTime(totalMs)}?`,
-      )
-    )
-      return;
+    const ok = await confirm({
+      title: 'Concluir card "Testes"',
+      message: `Concluir o card "Testes" da US #${cardId} e registrar o tempo total ${formatTime(totalMs)}?`,
+      confirmLabel: 'Concluir',
+      cancelLabel: 'Cancelar',
+    });
+    if (!ok) return;
     setConcluindo(grupo);
     setConcluirMsg((m) => {
       const n = { ...m };
@@ -271,6 +380,7 @@ export default function Execucao() {
       const html = `${cleaned}<br/><b>Tempo de testes:</b> ${formatTime(totalMs)}`;
       await updateFields(pat, testes.id, { 'System.Description': html });
       await updateState(pat, testes.id, 'Done');
+      await assignToQa(pat, testes.id);
       setConcluirMsg((m) => ({
         ...m,
         [grupo]: {
@@ -436,6 +546,25 @@ export default function Execucao() {
 
               {isOpen && (
                 <div className="space-y-3 border-t border-gray-100 p-4 dark:border-gray-700">
+                  {/* Iniciar: move o card "Testes" para Committed enquanto há casos pendentes */}
+                  {cardId && !allExecuted && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-selbetti-purple/40 bg-selbetti-purple/10 px-3 py-2 text-sm">
+                      <span className="text-gray-700 dark:text-gray-200">
+                        Ao começar a testar, marque o card "Testes" como em
+                        andamento (Committed) no seu nome.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void iniciarTestes(grupo, cardId)}
+                        disabled={concluindo === grupo}
+                        className="shrink-0 rounded-md bg-selbetti-purple px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-selbetti-purple/90 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {concluindo === grupo
+                          ? 'Iniciando…'
+                          : 'Iniciar testes (mover para Committed)'}
+                      </button>
+                    </div>
+                  )}
                   {/* Concluir card "Testes" da US quando todos os casos têm resultado */}
                   {cardId && allExecuted && (
                     <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-selbetti-green/40 bg-selbetti-green/10 px-3 py-2 text-sm">
@@ -470,8 +599,9 @@ export default function Execucao() {
                       {cMsg.text}
                     </div>
                   )}
-                  {items.map((c) => {
+                  {items.map((c, i) => {
                     const isRunning = Boolean(running[c.id]);
+                    const linkedBugs = bugsByCase.get(c.id) ?? [];
                     return (
                       <article
                         key={c.id}
@@ -484,6 +614,9 @@ export default function Execucao() {
                         }`}
                       >
                         <div className="flex flex-wrap items-center gap-2">
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                            {i + 1}
+                          </span>
                           <span
                             className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${tipoBadge[c.tipo]}`}
                           >
@@ -623,17 +756,9 @@ export default function Execucao() {
                           </div>
                         </div>
 
-                        {(c.status === 'fail' || c.bugId) && (
+                        {(c.status === 'fail' || linkedBugs.length > 0) && (
                           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3 dark:border-gray-700">
-                            {c.bugId ? (
-                              <Link
-                                to="/bugs"
-                                title="Bug aberto a partir deste caso — abrir a aba Bugs"
-                                className="inline-flex items-center gap-1 rounded-md border border-red-300 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 transition-colors hover:bg-red-100 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-300"
-                              >
-                                🐞 Bug aberto
-                              </Link>
-                            ) : (
+                            {c.status === 'fail' && (
                               <button
                                 type="button"
                                 onClick={() => setBugCase(c)}
@@ -642,6 +767,16 @@ export default function Execucao() {
                                 🐞 Abrir bug
                               </button>
                             )}
+                            {linkedBugs.map((b) => (
+                              <Link
+                                key={b.id}
+                                to={`/bugs?bug=${b.id}`}
+                                title={`Abrir o bug: ${b.title}`}
+                                className="inline-flex max-w-[240px] items-center gap-1 truncate rounded-md border border-red-300 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 transition-colors hover:bg-red-100 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-300"
+                              >
+                                🐞 {b.title}
+                              </Link>
+                            ))}
                           </div>
                         )}
                       </article>
@@ -670,8 +805,7 @@ export default function Execucao() {
             azureCardId: bugCase.azureCardId,
           }}
           onClose={() => setBugCase(null)}
-          onSaved={() => {}}
-          onCreated={(bugId) => void linkBug(bugCase.id, bugId)}
+          onSaved={() => void reloadBugs()}
         />
       )}
     </div>

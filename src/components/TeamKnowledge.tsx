@@ -8,6 +8,8 @@ import {
   deleteTeamNote,
 } from '../lib/db';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 
 const CATEGORIES: { value: TeamNoteCategory; label: string }[] = [
   { value: 'modulo', label: 'Módulo' },
@@ -38,6 +40,8 @@ const inputClass =
 
 export default function TeamKnowledge() {
   const { user } = useAuth();
+  const { showToast } = useToast();
+  const confirm = useConfirm();
   const uid = user?.uid ?? '';
   const displayName = user?.displayName?.trim() || user?.email || 'QA';
 
@@ -135,17 +139,24 @@ export default function TeamKnowledge() {
       setEditingId(null);
       await load();
     } catch {
-      window.alert('Não foi possível editar a nota.');
+      showToast('Não foi possível editar a nota.', 'error');
     }
   };
 
   const handleDelete = async (note: TeamNote): Promise<void> => {
-    if (!window.confirm(`Excluir "${note.title}"?`)) return;
+    const ok = await confirm({
+      title: 'Excluir nota',
+      message: `Excluir "${note.title}"?`,
+      confirmLabel: 'Excluir',
+      cancelLabel: 'Cancelar',
+      tone: 'red',
+    });
+    if (!ok) return;
     try {
       await deleteTeamNote(note.id);
       await load();
     } catch {
-      window.alert('Não foi possível excluir a nota.');
+      showToast('Não foi possível excluir a nota.', 'error');
     }
   };
 

@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { TestCase } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { useGenerator } from '../context/GeneratorContext';
 import { getUserProfile, createSavedCase } from '../lib/db';
 import { generateTestCases, TestCaseGenError } from '../lib/ai';
@@ -33,6 +34,7 @@ interface GenError {
 
 export default function TestCaseGenerator() {
   const { user, apiKeys } = useAuth();
+  const { showToast } = useToast();
   const {
     titulo,
     setTitulo,
@@ -310,7 +312,7 @@ export default function TestCaseGenerator() {
       );
       setSavedAll(true);
     } catch {
-      window.alert('Não foi possível salvar os casos no repositório.');
+      showToast('Não foi possível salvar os casos no repositório.', 'error');
       setSavingAll(false);
       return;
     }
@@ -905,6 +907,9 @@ export default function TestCaseGenerator() {
                 <InsertCaseRow onClick={() => setAddingAt(idx)} />
                 <article className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
                 <div className="flex flex-wrap items-center gap-2">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                    {idx + 1}
+                  </span>
                   <span
                     className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${tipoBadge[tc.tipo]}`}
                   >
