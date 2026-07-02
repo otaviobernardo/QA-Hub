@@ -245,6 +245,90 @@ export default function Execucao() {
     }
   };
 
+  // Atribui a task ao QA logado (best-effort — não bloqueia se o e-mail não resolver).
+  const assignToQa = async (pat: string, id: number): Promise<void> => {
+    if (!user?.email) return;
+    try {
+      await updateFields(pat, id, { 'System.AssignedTo': user.email });
+    } catch {
+      // o e-mail pode não corresponder a um usuário do Azure; o move segue válido.
+    }
+  };
+
+  // Inicia os testes: move a task "Testes" da US para Committed (em andamento),
+  // no nome do QA. Não repete se já estiver em Committed/Done.
+  const iniciarTestes = async (grupo: string, cardId: string): Promise<void> => {
+    if (!user) return;
+    const ok = await confirm({
+      title: 'Iniciar card "Testes"',
+      message: `Mover o card "Testes" da US #${cardId} para Committed (em andamento) no seu nome?`,
+      confirmLabel: 'Iniciar',
+      cancelLabel: 'Cancelar',
+      tone: 'purple',
+    });
+    if (!ok) return;
+    setConcluindo(grupo);
+    setConcluirMsg((m) => {
+      const n = { ...m };
+      delete n[grupo];
+      return n;
+    });
+    try {
+      const profile = await getUserProfile(user.uid);
+      const pat = profile?.azurePat?.trim();
+      if (!pat) {
+        setConcluirMsg((m) => ({
+          ...m,
+          [grupo]: {
+            type: 'error',
+            text: 'Configure seu PAT do Azure em Configurações.',
+          },
+        }));
+        return;
+      }
+      const testes = await findTestesTask(pat, cardId);
+      if (!testes) {
+        setConcluirMsg((m) => ({
+          ...m,
+          [grupo]: { type: 'error', text: 'Task "Testes" não encontrada na US.' },
+        }));
+        return;
+      }
+      if (testes.state === 'Committed' || testes.state === 'Done') {
+        setConcluirMsg((m) => ({
+          ...m,
+          [grupo]: {
+            type: 'ok',
+            text: `Card "Testes" (#${testes.id}) já está em ${testes.state}.`,
+          },
+        }));
+        return;
+      }
+      await updateState(pat, testes.id, 'Committed');
+      await assignToQa(pat, testes.id);
+      setConcluirMsg((m) => ({
+        ...m,
+        [grupo]: {
+          type: 'ok',
+          text: `Card "Testes" (#${testes.id}) movido para Committed no seu nome.`,
+        },
+      }));
+    } catch (err) {
+      setConcluirMsg((m) => ({
+        ...m,
+        [grupo]: {
+          type: 'error',
+          text:
+            err instanceof AzureError
+              ? err.message
+              : 'Falha ao iniciar o card "Testes".',
+        },
+      }));
+    } finally {
+      setConcluindo(null);
+    }
+  };
+
   // Conclui a task filha "Testes" da US (PBI = azureCardId): move para Done e
   // registra o tempo total na descrição. Só habilitado quando todos os casos da
   // feature têm resultado (nenhum pendente).
@@ -296,6 +380,7 @@ export default function Execucao() {
       const html = `${cleaned}<br/><b>Tempo de testes:</b> ${formatTime(totalMs)}`;
       await updateFields(pat, testes.id, { 'System.Description': html });
       await updateState(pat, testes.id, 'Done');
+      await assignToQa(pat, testes.id);
       setConcluirMsg((m) => ({
         ...m,
         [grupo]: {
@@ -461,6 +546,25 @@ export default function Execucao() {
 
               {isOpen && (
                 <div className="space-y-3 border-t border-gray-100 p-4 dark:border-gray-700">
+                  {/* Iniciar: move o card "Testes" para Committed enquanto há casos pendentes */}
+                  {cardId && !allExecuted && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-selbetti-purple/40 bg-selbetti-purple/10 px-3 py-2 text-sm">
+                      <span className="text-gray-700 dark:text-gray-200">
+                        Ao começar a testar, marque o card "Testes" como em
+                        andamento (Committed) no seu nome.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void iniciarTestes(grupo, cardId)}
+                        disabled={concluindo === grupo}
+                        className="shrink-0 rounded-md bg-selbetti-purple px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-selbetti-purple/90 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {concluindo === grupo
+                          ? 'Iniciando…'
+                          : 'Iniciar testes (mover para Committed)'}
+                      </button>
+                    </div>
+                  )}
                   {/* Concluir card "Testes" da US quando todos os casos têm resultado */}
                   {cardId && allExecuted && (
                     <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-selbetti-green/40 bg-selbetti-green/10 px-3 py-2 text-sm">
