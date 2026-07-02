@@ -60,6 +60,19 @@ function loadRunning(): Record<string, number> {
   return {};
 }
 
+// Cards cujo "Testes" já foi iniciado (Committed) — esconde o botão Iniciar.
+const INICIADOS_KEY = 'qa-hub-testes-iniciados';
+
+function loadIniciados(): string[] {
+  try {
+    const raw = localStorage.getItem(INICIADOS_KEY);
+    if (raw) return JSON.parse(raw) as string[];
+  } catch {
+    // localStorage indisponível ou JSON inválido — começa vazio.
+  }
+  return [];
+}
+
 export default function Execucao() {
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -71,6 +84,11 @@ export default function Execucao() {
 
   // Caso que falhou e vai abrir um bug (modal pré-preenchido).
   const [bugCase, setBugCase] = useState<SavedTestCase | null>(null);
+
+  // Cards cujo "Testes" já foi movido para Committed (esconde o botão Iniciar).
+  const [iniciados, setIniciados] = useState<Set<string>>(
+    () => new Set(loadIniciados()),
+  );
 
   // Conclusão do card "Testes" da US: estado de processamento e mensagens por grupo.
   const [concluindo, setConcluindo] = useState<string | null>(null);
@@ -245,6 +263,21 @@ export default function Execucao() {
     }
   };
 
+  // Marca o card como iniciado (persistindo), para esconder o botão Iniciar.
+  const markIniciado = (cardId: string): void => {
+    setIniciados((prev) => {
+      if (prev.has(cardId)) return prev;
+      const next = new Set(prev);
+      next.add(cardId);
+      try {
+        localStorage.setItem(INICIADOS_KEY, JSON.stringify([...next]));
+      } catch {
+        // localStorage indisponível — segue só em memória.
+      }
+      return next;
+    });
+  };
+
   // Atribui a task ao QA logado (best-effort — não bloqueia se o e-mail não resolver).
   const assignToQa = async (pat: string, id: number): Promise<void> => {
     if (!user?.email) return;
@@ -295,6 +328,7 @@ export default function Execucao() {
         return;
       }
       if (testes.state === 'Committed' || testes.state === 'Done') {
+        markIniciado(cardId);
         setConcluirMsg((m) => ({
           ...m,
           [grupo]: {
@@ -306,6 +340,7 @@ export default function Execucao() {
       }
       await updateState(pat, testes.id, 'Committed');
       await assignToQa(pat, testes.id);
+      markIniciado(cardId);
       setConcluirMsg((m) => ({
         ...m,
         [grupo]: {
@@ -547,7 +582,7 @@ export default function Execucao() {
               {isOpen && (
                 <div className="space-y-3 border-t border-gray-100 p-4 dark:border-gray-700">
                   {/* Iniciar: move o card "Testes" para Committed enquanto há casos pendentes */}
-                  {cardId && !allExecuted && (
+                  {cardId && !allExecuted && !iniciados.has(cardId) && (
                     <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-selbetti-purple/40 bg-selbetti-purple/10 px-3 py-2 text-sm">
                       <span className="text-gray-700 dark:text-gray-200">
                         Ao começar a testar, marque o card "Testes" como em
